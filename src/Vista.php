@@ -141,7 +141,7 @@ final class Vista
             <a href="<?= e(config('municipio.portal')) ?>"><?= self::icono('casa') ?>Inicio</a>
             <?php if ($u): ?>
                 <a href="inicio.php" class="<?= $seccion === 'predios' ? 'activo' : '' ?>" <?= $seccion === 'predios' ? 'aria-current="page"' : '' ?>><?= self::icono('predio') ?>Mis predios</a>
-                <a href="inicio.php#buscar" class="<?= $seccion === 'otro' ? 'activo' : '' ?>"><?= self::icono('buscar') ?>Pagar otro predio</a>
+                <a href="inicio.php?vista=otros" class="<?= $seccion === 'otro' ? 'activo' : '' ?>" <?= $seccion === 'otro' ? 'aria-current="page"' : '' ?>><?= self::icono('buscar') ?>Otros predios</a>
             <?php else: ?>
                 <a href="./" class="<?= $seccion === 'entrada' ? 'activo' : '' ?>"><?= self::icono('predio') ?>Impuesto predial</a>
             <?php endif; ?>

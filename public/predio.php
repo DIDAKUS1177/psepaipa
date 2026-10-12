@@ -67,7 +67,7 @@ $etiquetasDesglose = [
     'otros'     => 'Otros conceptos',
 ];
 
-Vista::abrir('Predio ' . $p['codigo_predio'], ['titulo' => 'Impuesto Predial Unificado', 'volver' => 'inicio.php'], '', $propio ? 'predios' : 'otro');
+Vista::abrir('Predio ' . $p['codigo_predio'], ['titulo' => 'Impuesto Predial Unificado', 'volver' => $propio ? 'inicio.php' : 'inicio.php?vista=otros'], '', $propio ? 'predios' : 'otro');
 ?>
 <div class="contenedor pagina">
     <?php if (!$alDia): ?>

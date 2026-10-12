@@ -68,8 +68,14 @@ final class Predios
             return [];
         }
         return Db::filas(
-            "SELECT TOP 10 p.id, p.codigo_predio, p.direccion
+            "SELECT TOP 10 p.id, p.codigo_predio, p.codigo_predio_anterior, p.direccion, p.ultimo_anio_pago, z.descripcion AS zona,
+                    (SELECT TOP 1 pr.nombre FROM predios_propietarios prp JOIN propietarios pr ON pr.id = prp.id_propietario
+                      WHERE prp.id_predio = p.id ORDER BY prp.jerarquia) AS propietario,
+                    (SELECT COUNT(*) FROM predios_pagos pp WHERE pp.id_predio = p.id AND " . self::SE_DEBE . ") AS vigencias_debe,
+                    (SELECT SUM(pp.total_calculo) FROM predios_pagos pp WHERE pp.id_predio = p.id AND " . self::SE_DEBE . ") AS total_debe,
+                    (SELECT MIN(pp.ultimo_anio) FROM predios_pagos pp WHERE pp.id_predio = p.id AND " . self::SE_DEBE . ") AS debe_desde
                FROM predios p
+               LEFT JOIN zonas z ON z.id = p.id_zona
               WHERE p.estado = 1
                 AND (REPLACE(REPLACE(p.codigo_predio, '-', ''), ' ', '') = ?
                      OR REPLACE(REPLACE(p.codigo_predio_anterior, '-', ''), ' ', '') = ?)
