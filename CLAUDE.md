@@ -55,8 +55,8 @@ cada vigencia en `predios_pagos`, y lee lo que deja. Los procedimientos vienen c
 
 ## Pantallas (estructura del portal de Duitama, identidad de Paipa)
 
-Barra GOV.CO con accesibilidad (A−/A+ con `zoom` y alto contraste, guardados en
-localStorage), encabezado con "Registrarse / Iniciar sesión", menú horizontal y franja
+Encabezado con "Registrarse / Iniciar sesión" (sin la barra azul GOV.CO: a Diego no le
+gustó, 2026-10-12), menú horizontal y franja
 del trámite con "Regresar". En el predio: "Información del predio" con datos clave,
 "Valor a pagar" (fecha límite, total, "¿Qué estoy pagando?", menús Imprimir y Pagar) y
 pestañas Estado financiero / Recibos emitidos / Histórico de pagos. En celular la tabla

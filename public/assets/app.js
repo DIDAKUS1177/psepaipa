@@ -1,39 +1,10 @@
-/* Comportamientos del portal, sin dependencias: accesibilidad, contraseña,
+/* Comportamientos del portal, sin dependencias: contraseña,
    menús, pestañas y la selección de vigencias con el valor exacto en vivo. */
 (function () {
     'use strict';
 
     var $ = function (sel, raiz) { return (raiz || document).querySelector(sel); };
     var $$ = function (sel, raiz) { return Array.prototype.slice.call((raiz || document).querySelectorAll(sel)); };
-
-    // ---------- Accesibilidad (barra GOV.CO): tamaño de texto y contraste ----------
-    var ESCALAS = ['0.9', '1', '1.1', '1.2', '1.3'];
-    var html = document.documentElement;
-    function leerAcc() {
-        try { return JSON.parse(localStorage.getItem('psepaipa.accesibilidad') || '{}'); } catch (e) { return {}; }
-    }
-    function guardarAcc(a) {
-        try { localStorage.setItem('psepaipa.accesibilidad', JSON.stringify(a)); } catch (e) {}
-    }
-    var acc = leerAcc();
-    var botonContraste = $('[data-acc="contraste"]');
-    if (botonContraste) { botonContraste.setAttribute('aria-pressed', acc.contraste ? 'true' : 'false'); }
-    $$('[data-acc]').forEach(function (b) {
-        b.addEventListener('click', function () {
-            var tipo = b.getAttribute('data-acc');
-            if (tipo === 'contraste') {
-                acc.contraste = !acc.contraste;
-                html.classList.toggle('alto-contraste', acc.contraste);
-                b.setAttribute('aria-pressed', acc.contraste ? 'true' : 'false');
-            } else {
-                var i = ESCALAS.indexOf(acc.escala || '1');
-                i = Math.max(0, Math.min(ESCALAS.length - 1, i + (tipo === 'mas' ? 1 : -1)));
-                acc.escala = ESCALAS[i];
-                if (acc.escala === '1') { html.removeAttribute('data-escala'); } else { html.setAttribute('data-escala', acc.escala); }
-            }
-            guardarAcc(acc);
-        });
-    });
 
     // ---------- Mostrar u ocultar la contraseña ----------
     $$('.ver-clave').forEach(function (b) {

@@ -1,8 +1,7 @@
 <?php
 /**
- * Plantilla común. Estructura de los portales tributarios del Estado (como el
- * de Duitama): barra GOV.CO, encabezado con el logo de la Alcaldía y el
- * acceso, menú horizontal, franja del trámite con "Regresar", y pie con los
+ * Plantilla común. Estructura del portal tributario de Duitama: encabezado
+ * con el logo de la Alcaldía y el acceso, menú horizontal, franja del trámite con "Regresar", y pie con los
  * datos de contacto. La identidad (colores, tipografía, logo) es la del
  * Portal Tributario de Paipa, para que el contribuyente no sienta que salió
  * del sitio.
@@ -107,31 +106,10 @@ final class Vista
             --suave: <?= $suave ?>;
         }
     </style>
-    <script>
-        // Preferencias de accesibilidad guardadas, antes de pintar (sin parpadeo).
-        try {
-            var a = JSON.parse(localStorage.getItem('psepaipa.accesibilidad') || '{}');
-            if (a.escala) { document.documentElement.setAttribute('data-escala', a.escala); }
-            if (a.contraste) { document.documentElement.classList.add('alto-contraste'); }
-        } catch (e) {}
-    </script>
     <link rel="stylesheet" href="assets/app.css?v=<?= (int) $v ?>">
 </head>
 <body class="<?= e($claseCuerpo) ?>">
 <a class="saltar" href="#contenido">Saltar al contenido</a>
-
-<div class="govco">
-    <div class="contenedor govco-fila">
-        <a class="govco-logo" href="https://www.gov.co/" target="_blank" rel="noopener" aria-label="Portal único del Estado colombiano GOV.CO (se abre en otra pestaña)">
-            <svg viewBox="0 0 132 26" aria-hidden="true"><text x="0" y="20" fill="#fff" font-family="Montserrat, Inter, Arial, sans-serif" font-weight="700" font-size="21" letter-spacing=".5">GOV.CO</text></svg>
-        </a>
-        <div class="accesibilidad" role="group" aria-label="Accesibilidad">
-            <button type="button" data-acc="menos" aria-label="Disminuir el tamaño del texto">A<span aria-hidden="true">−</span></button>
-            <button type="button" data-acc="mas" aria-label="Aumentar el tamaño del texto">A<span aria-hidden="true">+</span></button>
-            <button type="button" data-acc="contraste" aria-pressed="false" aria-label="Alto contraste"><?= self::icono('contraste') ?><span class="acc-texto">Contraste</span></button>
-        </div>
-    </div>
-</div>
 
 <header class="cabecera">
     <div class="contenedor cabecera-fila">
