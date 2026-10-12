@@ -294,24 +294,36 @@ button { font: inherit; }
 .filtro-texto input:focus { outline: none; border-color: var(--primario-oscuro); box-shadow: 0 0 0 4px rgba(var(--primario-rgb), .2); }
 .filtro-vacio { margin: 0; padding: 18px; text-align: center; color: var(--tenue); background: #fff; border: 1px dashed var(--linea-fuerte); border-radius: var(--radio); }
 .predio-tarjeta[hidden] { display: none; }
-.predios { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); }
+.predios { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 .predio-tarjeta a {
-    position: relative; display: grid; gap: 6px; height: 100%; padding: 20px 20px 18px;
-    background: #fff; border: 1px solid var(--linea); border-radius: var(--radio);
+    position: relative; display: grid; align-items: center; gap: 6px 22px;
+    grid-template-columns: 130px minmax(0, 1.25fr) minmax(0, 1.4fr) minmax(150px, auto) auto;
+    padding: 14px 20px 14px 24px; background: #fff; border: 1px solid var(--linea); border-radius: 14px;
     color: inherit; text-decoration: none; overflow: hidden;
     transition: transform .2s var(--salida), box-shadow .2s ease, border-color .2s ease;
 }
 .predio-tarjeta a::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 5px; background: var(--primario); }
 .predio-tarjeta.con-deuda a::before { background: var(--pendiente); }
-.predio-tarjeta a:hover { transform: translateY(-3px); border-color: var(--linea-fuerte); box-shadow: 0 18px 34px -24px rgba(var(--profundo-rgb), .75); }
-.predio-cabeza { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.predio-tarjeta a:hover { transform: translateY(-2px); border-color: var(--linea-fuerte); box-shadow: 0 14px 28px -22px rgba(var(--profundo-rgb), .75); }
+.fp-estado { display: grid; justify-items: start; gap: 4px; }
 .predio-zona { font-size: 13px; color: var(--tenue); font-weight: 500; }
-.predio-direccion { display: flex; align-items: center; gap: 6px; margin: 4px 0 8px; color: var(--tenue); font-size: 14px; }
+.fp-ref .referencia { font-size: 15px; }
+.fp-dir { display: grid; gap: 2px; min-width: 0; }
+.predio-direccion { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--tenue); font-size: 14px; min-width: 0; }
 .predio-direccion svg { width: 16px; height: 16px; }
-.predio-pie { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding-top: 12px; border-top: 1px solid var(--linea); }
+.fp-deuda { text-align: right; }
+.fp-deuda .etiqueta { font-size: 11px; }
+.fp-deuda .monto { font-size: 20px; }
 .predio-ir { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 14px; color: var(--primario-oscuro); white-space: nowrap; }
 .predio-ir svg { width: 17px; height: 17px; transition: transform .2s var(--salida); }
 .predio-tarjeta a:hover .predio-ir svg { transform: translateX(3px); }
+@media (max-width: 980px) {
+    .predio-tarjeta a { grid-template-columns: minmax(0, 1fr) auto; gap: 8px 14px; padding: 16px 16px 16px 20px; }
+    .fp-estado { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; width: 100%; }
+    .fp-ref, .fp-dir { grid-column: 1 / -1; }
+    .fp-deuda { text-align: left; padding-top: 10px; border-top: 1px solid var(--linea); }
+    .predio-ir { align-self: end; padding-top: 10px; border-top: 1px solid var(--linea); justify-content: flex-end; }
+}
 .nota-cifras { display: flex; align-items: center; gap: 8px; margin: -10px 0 0; font-size: 13px; color: var(--tenue); }
 .nota-cifras svg { width: 16px; height: 16px; }
 

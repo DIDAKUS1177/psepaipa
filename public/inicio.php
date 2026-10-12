@@ -53,30 +53,30 @@ function tarjetaPredio(array $p, bool $ajeno): void
     ?>
     <li class="predio-tarjeta <?= $debe > 0 ? 'con-deuda' : 'al-dia' ?>" data-texto="<?= e(mb_strtolower($p['codigo_predio'] . ' ' . $p['codigo_predio_anterior'] . ' ' . $p['direccion'], 'UTF-8')) ?>">
         <a href="predio.php?id=<?= (int) $p['id'] ?>">
-            <div class="predio-cabeza">
+            <div class="fp-estado">
                 <span class="chip <?= $debe > 0 ? 'chip-pendiente' : 'chip-ok' ?>"><?= $debe > 0 ? 'Por pagar' : 'Al día' ?></span>
                 <span class="predio-zona"><?= e($p['zona'] ?: 'Predio') ?></span>
             </div>
-            <p class="etiqueta">Referencia catastral</p>
-            <p class="referencia"><?= e($p['codigo_predio']) ?></p>
-            <?php if ($ajeno && !empty($p['propietario'])): ?>
-                <p class="predio-direccion"><?= Vista::icono('usuario') ?><?= e(Predios::enmascararNombre((string) $p['propietario'])) ?></p>
-            <?php endif; ?>
-            <p class="predio-direccion"><?= Vista::icono('direccion') ?><?= e($p['direccion'] ?: 'Sin dirección registrada') ?></p>
-            <div class="predio-pie">
-                <?php if ($debe > 0): ?>
-                    <div>
-                        <p class="etiqueta">Debe <?= $debe ?> vigencia<?= $debe === 1 ? '' : 's' ?> <?= $p['debe_desde'] ? '(desde ' . (int) $p['debe_desde'] . ')' : '' ?></p>
-                        <p class="monto"><?= pesos($p['total_debe']) ?></p>
-                    </div>
-                <?php else: ?>
-                    <div>
-                        <p class="etiqueta">Último año pagado</p>
-                        <p class="monto"><?= e($p['ultimo_anio_pago'] ?: '—') ?></p>
-                    </div>
-                <?php endif; ?>
-                <span class="predio-ir"><?= $debe > 0 ? 'Ver y pagar' : 'Ver detalle' ?><?= Vista::icono('ir') ?></span>
+            <div class="fp-ref">
+                <p class="etiqueta">Referencia catastral</p>
+                <p class="referencia"><?= e($p['codigo_predio']) ?></p>
             </div>
+            <div class="fp-dir">
+                <?php if ($ajeno && !empty($p['propietario'])): ?>
+                    <p class="predio-direccion"><?= Vista::icono('usuario') ?><?= e(Predios::enmascararNombre((string) $p['propietario'])) ?></p>
+                <?php endif; ?>
+                <p class="predio-direccion"><?= Vista::icono('direccion') ?><?= e($p['direccion'] ?: 'Sin dirección registrada') ?></p>
+            </div>
+            <div class="fp-deuda">
+                <?php if ($debe > 0): ?>
+                    <p class="etiqueta">Debe <?= $debe ?> vigencia<?= $debe === 1 ? '' : 's' ?><?= $p['debe_desde'] ? ' · desde ' . (int) $p['debe_desde'] : '' ?></p>
+                    <p class="monto"><?= pesos($p['total_debe']) ?></p>
+                <?php else: ?>
+                    <p class="etiqueta">Último año pagado</p>
+                    <p class="monto"><?= e($p['ultimo_anio_pago'] ?: '—') ?></p>
+                <?php endif; ?>
+            </div>
+            <span class="predio-ir"><?= $debe > 0 ? 'Ver y pagar' : 'Ver detalle' ?><?= Vista::icono('ir') ?></span>
         </a>
     </li>
     <?php
