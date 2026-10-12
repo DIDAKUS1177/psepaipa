@@ -61,7 +61,7 @@ function attrError(array $errores, string $campo): string
     return isset($errores[$campo]) ? ' aria-invalid="true" aria-describedby="e-' . e($campo) . '"' : '';
 }
 
-Vista::abrir($vista === 'entrar' ? 'Iniciar sesión' : 'Inscribirse', null, 'pagina-entrada');
+Vista::abrir($vista === 'entrar' ? 'Iniciar sesión' : 'Inscribirse', null, 'pagina-entrada', 'entrada');
 $ciudad = (string) config('municipio.ciudad');
 ?>
 <section class="entrada">
@@ -70,13 +70,12 @@ $ciudad = (string) config('municipio.ciudad');
         <div class="entrada-texto">
             <p class="ceja">Secretaría de Hacienda · <?= e($ciudad) ?></p>
             <h1>Impuesto Predial <em>Unificado</em></h1>
-            <p class="bajada">Consulta el estado de cuenta de tus predios, genera la factura con código de barras y paga en línea, sin hacer filas.</p>
-            <ol class="pasos">
-                <li><span>1</span>Inicia sesión con tu documento.</li>
-                <li><span>2</span>Revisa tus predios y las vigencias que debes.</li>
-                <li><span>3</span>Elige los años y paga, o descarga la factura para el banco.</li>
-            </ol>
-            <p class="entrada-nota"><?= Vista::icono('escudo') ?>¿Vas a pagar el predio de otra persona? También puedes: búscalo por su referencia catastral después de entrar.</p>
+            <p class="bajada">Consulta lo que debes de tus predios, elige los años que vas a pagar y descarga la factura con código de barras, sin hacer filas.</p>
+            <ul class="beneficios">
+                <li><?= Vista::icono('reloj') ?><span><strong>Al día de hoy.</strong> Intereses y descuentos calculados al momento.</span></li>
+                <li><?= Vista::icono('calendario') ?><span><strong>Tú eliges los años.</strong> Paga una vigencia o todas.</span></li>
+                <li><?= Vista::icono('usuario') ?><span><strong>También de otras personas.</strong> Con la referencia catastral.</span></li>
+            </ul>
         </div>
 
         <div class="tarjeta-acceso">
@@ -86,7 +85,7 @@ $ciudad = (string) config('municipio.ciudad');
             </div>
 
             <?php if ($vista === 'entrar'): ?>
-            <form method="post" class="formulario" novalidate>
+            <form method="post" class="formulario" novalidate data-ocupado>
                 <input type="hidden" name="csrf" value="<?= e(tokenCsrf()) ?>">
                 <input type="hidden" name="accion" value="entrar">
                 <h2>Bienvenido</h2>
@@ -115,7 +114,7 @@ $ciudad = (string) config('municipio.ciudad');
                 <p class="formulario-pie">¿Primera vez? <a href="./?v=inscribirse">Crea tu cuenta</a></p>
             </form>
             <?php else: ?>
-            <form method="post" class="formulario" novalidate>
+            <form method="post" class="formulario" novalidate data-ocupado>
                 <input type="hidden" name="csrf" value="<?= e(tokenCsrf()) ?>">
                 <input type="hidden" name="accion" value="inscribir">
                 <h2>Crea tu cuenta</h2>
@@ -186,5 +185,6 @@ $ciudad = (string) config('municipio.ciudad');
         </div>
     </div>
 </section>
+
 <?php
 Vista::cerrar();

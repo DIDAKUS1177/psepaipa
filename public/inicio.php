@@ -42,15 +42,34 @@ try {
     $errorDatos = 'No pudimos cargar tus predios en este momento. Intenta de nuevo en unos minutos.';
 }
 
-Vista::abrir('Mis predios', ['titulo' => 'Impuesto Predial Unificado', 'volver' => null]);
+$conDeuda = array_values(array_filter($mios, fn($p) => (int) $p['vigencias_debe'] > 0));
+$totalDeuda = array_sum(array_map(fn($p) => (float) $p['total_debe'], $conDeuda));
+
+Vista::abrir('Mis predios', ['titulo' => 'Impuesto Predial Unificado', 'volver' => null], '', 'predios');
 ?>
 <div class="contenedor pagina">
     <section class="saludo">
-        <div>
+        <div class="saludo-texto">
             <p class="ceja ceja-oscura">Hola, <?= e(mb_convert_case(mb_strtolower($u['nombres']), MB_CASE_TITLE)) ?></p>
             <h2 class="titulo-seccion">Tus predios</h2>
-            <p class="texto-tenue">Predios registrados a nombre del documento <?= e($u['documento']) ?>, como propietario o copropietario.</p>
+            <p class="texto-tenue">Registrados a nombre del documento <?= e($u['documento']) ?>, como propietario o copropietario. Elige uno para ver lo que debe y pagarlo.</p>
         </div>
+        <?php if ($mios): ?>
+        <dl class="resumen" aria-label="Resumen de tus predios">
+            <div class="resumen-item">
+                <dt>Predios</dt>
+                <dd><?= count($mios) ?></dd>
+            </div>
+            <div class="resumen-item <?= $conDeuda ? 'resumen-alerta' : 'resumen-ok' ?>">
+                <dt>Con saldo pendiente</dt>
+                <dd><?= count($conDeuda) ?></dd>
+            </div>
+            <div class="resumen-item resumen-total">
+                <dt>Total pendiente <span class="resumen-nota">(último cálculo)</span></dt>
+                <dd><?= pesos($totalDeuda) ?></dd>
+            </div>
+        </dl>
+        <?php endif; ?>
     </section>
 
     <?php if ($errorDatos): ?>
@@ -63,11 +82,26 @@ Vista::abrir('Mis predios', ['titulo' => 'Impuesto Predial Unificado', 'volver' 
             <a class="boton boton-primario" href="#buscar"><?= Vista::icono('buscar') ?>Buscar por referencia catastral</a>
         </div>
     <?php else: ?>
+        <?php if (count($mios) > 6): ?>
+        <div class="filtro-predios" data-filtro>
+            <div class="filtro-chips" role="group" aria-label="Mostrar">
+                <button type="button" class="filtro-chip activo" data-filtro-estado="todos" aria-pressed="true">Todos <span><?= count($mios) ?></span></button>
+                <button type="button" class="filtro-chip" data-filtro-estado="con-deuda" aria-pressed="false">Con saldo <span><?= count($conDeuda) ?></span></button>
+                <button type="button" class="filtro-chip" data-filtro-estado="al-dia" aria-pressed="false">Al día <span><?= count($mios) - count($conDeuda) ?></span></button>
+            </div>
+            <label class="filtro-texto">
+                <?= Vista::icono('buscar') ?>
+                <span class="oculto">Filtrar por referencia o dirección</span>
+                <input type="search" placeholder="Filtrar por referencia o dirección" data-filtro-texto autocomplete="off">
+            </label>
+        </div>
+        <p class="filtro-vacio" data-filtro-vacio hidden>Ningún predio coincide con el filtro.</p>
+        <?php endif; ?>
         <ul class="predios">
             <?php foreach ($mios as $p):
                 $debe = (int) $p['vigencias_debe'];
             ?>
-            <li class="predio-tarjeta <?= $debe > 0 ? 'con-deuda' : 'al-dia' ?>">
+            <li class="predio-tarjeta <?= $debe > 0 ? 'con-deuda' : 'al-dia' ?>" data-texto="<?= e(mb_strtolower($p['codigo_predio'] . ' ' . $p['codigo_predio_anterior'] . ' ' . $p['direccion'], 'UTF-8')) ?>">
                 <a href="predio.php?id=<?= (int) $p['id'] ?>">
                     <div class="predio-cabeza">
                         <span class="chip <?= $debe > 0 ? 'chip-pendiente' : 'chip-ok' ?>"><?= $debe > 0 ? 'Por pagar' : 'Al día' ?></span>
@@ -94,13 +128,14 @@ Vista::abrir('Mis predios', ['titulo' => 'Impuesto Predial Unificado', 'volver' 
             </li>
             <?php endforeach; ?>
         </ul>
-        <p class="nota-cifras"><?= Vista::icono('reloj') ?>El valor de cada tarjeta es el último calculado. Al abrir el predio se actualiza con los intereses de hoy.</p>
+        <p class="nota-cifras"><?= Vista::icono('info') ?>Los valores de las tarjetas son los del último cálculo. Al abrir el predio verás el valor exacto de hoy, con intereses y descuentos.</p>
     <?php endif; ?>
 
     <section class="buscador" id="buscar">
+        <div class="buscador-icono" aria-hidden="true"><?= Vista::icono('buscar') ?></div>
         <div class="buscador-texto">
             <h2 class="titulo-seccion">Pagar el predio de otra persona</h2>
-            <p class="texto-tenue">Escribe la referencia catastral (la nueva o la anterior). La encuentras en la factura del predial o en el certificado catastral.</p>
+            <p class="texto-tenue">Escribe la referencia catastral, la nueva o la anterior, con o sin guiones. La encuentras en una factura anterior del predial o en el certificado catastral.</p>
         </div>
         <form method="get" action="inicio.php#buscar" class="buscador-form" role="search">
             <label class="oculto" for="ref">Referencia catastral</label>

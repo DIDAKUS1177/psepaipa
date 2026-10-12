@@ -15,7 +15,8 @@ public/        raíz web (en Plesk el docroot debe apuntar aquí)
   predio.php   información, estado financiero por vigencia, valor a pagar
   cotizar.php  JSON: valor exacto de un rango de vigencias (sin guardar)
   factura.php  PDF de la liquidación oficial con código de barras GS1-128
-src/           Db, Cuentas, Predios, Factura, Vista, arranque
+  estado-cuenta.php  PDF informativo de las vigencias elegidas (no guarda nada)
+src/           Db, Cuentas, Predios, Factura, PdfPredial, Vista, arranque
 lib/tcpdf      TCPDF recortado (las fuentes básicas)
 config/        config.example.php (sin claves)
 pruebas/datos  (gitignored) scripts y cuenta de prueba local
@@ -51,6 +52,16 @@ cada vigencia en `predios_pagos`, y lee lo que deja. Los procedimientos vienen c
 - **Código de barras**: GS1-128 `FNC1 415 EAN 8020 factura(24) FNC1 3900 valor(14) FNC1 96
   AAAAMMDD`, con `write1DBarcode` (vectorial). FNC1 = chr(241). Leído con zxing: sale
   `]C1` (GS1-128) con los cuatro campos. El EAN sale de `parametros.ean`.
+
+## Pantallas (estructura del portal de Duitama, identidad de Paipa)
+
+Barra GOV.CO con accesibilidad (A−/A+ con `zoom` y alto contraste, guardados en
+localStorage), encabezado con "Registrarse / Iniciar sesión", menú horizontal y franja
+del trámite con "Regresar". En el predio: "Información del predio" con datos clave,
+"Valor a pagar" (fecha límite, total, "¿Qué estoy pagando?", menús Imprimir y Pagar) y
+pestañas Estado financiero / Recibos emitidos / Histórico de pagos. En celular la tabla
+de vigencias se vuelve tarjetas (sin deslizar a la derecha). Diego pidió NO poner
+"paso a paso" ni preguntas frecuentes: solo lo que pidió el cliente.
 
 ## Cuentas
 

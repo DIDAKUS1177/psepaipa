@@ -56,8 +56,9 @@ foreach ($c['filas'] as $f) {
     ];
 }
 responder([
-    'ok'     => $c['ok'],
-    'total'  => pesos($c['total']),
-    'hasta'  => fechaCorta($c['hasta']),
-    'filas'  => $filas,
+    'ok'       => $c['ok'],
+    'total'    => pesos($c['total']),
+    'hasta'    => fechaCorta($c['hasta']),
+    'filas'    => $filas,
+    'desglose' => array_map('pesos', $c['desglose']),
 ]);

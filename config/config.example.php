@@ -19,6 +19,11 @@ return [
         'color'        => '#1fa49d',
         'colorOscuro'  => '#17756f',
         'portal'       => 'https://sistema.erpsoftsas.com/predial/dist/dashboard.php',
+        'horario'      => '', // p. ej. 'Lunes a viernes, ...' (pedirlo a la Alcaldía)
+        'enlaces'      => [
+            'Estatuto de Rentas (Acuerdo 019 de 2022)' => 'https://www.paipa-boyaca.gov.co/Transparencia/Normatividad/Acuerdo%20019%20de%202022.pdf',
+            'Régimen sancionatorio (Acuerdo 018 de 2024)' => 'https://www.paipa-boyaca.gov.co/Transparencia/Normatividad/Acuerdo%20018%20de%202024.pdf',
+        ],
     ],
 
     // Base de datos del PREDIAL del municipio (la misma del sistema Laravel).

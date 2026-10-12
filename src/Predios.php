@@ -167,7 +167,41 @@ final class Predios
             }
         }
         $cupon = $rango ? Factura::cupones($rango)[0] : ['valor' => 0, 'hasta' => hoy()];
-        return ['ok' => $ok, 'filas' => $filas, 'total' => $cupon['valor'], 'hasta' => $cupon['hasta'], 'desde' => $desde, 'hastaAnio' => $hasta];
+
+        // Desglose de lo que se paga en el rango (para "¿Qué estoy pagando?").
+        $desglose = ['impuesto' => 0.0, 'intereses' => 0.0, 'sobretasa' => 0.0, 'descuento' => 0.0, 'otros' => 0.0];
+        foreach ($filas as $f) {
+            if ($f['pagable'] && $f['anio'] >= $desde && $f['anio'] <= $hasta) {
+                foreach ($desglose as $k => $v) {
+                    $desglose[$k] = $v + $f[$k];
+                }
+            }
+        }
+        // Si el cupón no coincide con la suma (redondeos del oficial), la
+        // diferencia va a "otros" para que el desglose sume el total exacto.
+        $desglose['otros'] += $cupon['valor'] - array_sum($desglose);
+
+        return ['ok' => $ok, 'filas' => $filas, 'total' => $cupon['valor'], 'hasta' => $cupon['hasta'],
+                'desde' => $desde, 'hastaAnio' => $hasta, 'desglose' => $desglose, 'rango' => $rango];
+    }
+
+    /**
+     * Facturas ya emitidas del predio (por cualquier canal: ventanilla, el
+     * PSE anterior o este portal), agrupadas por número.
+     */
+    public static function recibosEmitidos(int $id): array
+    {
+        return Db::filas(
+            "SELECT TOP 20 pp.factura_pago AS numero, MIN(pp.ultimo_anio) AS desde, MAX(pp.ultimo_anio) AS hasta,
+                    MAX(pp.fecha_emision) AS emision, SUM(pp.total_calculo) AS valor,
+                    SUM(ISNULL(pp.valor_pago, 0)) AS pagado, MAX(pp.fecha_pago) AS fecha_pago,
+                    MIN(CASE WHEN pp.pagado = 0 THEN 0 ELSE 1 END) AS todo_pagado
+               FROM predios_pagos pp
+              WHERE pp.id_predio = ? AND ISNULL(pp.factura_pago, '') <> '' AND ISNULL(pp.anulada, 0) = 0
+              GROUP BY pp.factura_pago
+              ORDER BY MAX(pp.fecha_emision) DESC, pp.factura_pago DESC",
+            [$id]
+        );
     }
 
     private static function ejecutarCalculo(int $id, int $desde, int $hasta): void
@@ -257,9 +291,9 @@ final class Predios
     public static function historicoPagos(int $id): array
     {
         return Db::filas(
-            "SELECT TOP 30 pg.fecha_pago, pg.numero_recibo, pg.valor_facturado, pg.anio_pago, b.descripcion AS banco
+            "SELECT TOP 30 pg.fecha_pago, pg.numero_recibo, pg.valor_facturado, pg.anio_pago, b.nombre AS banco
                FROM pagos pg
-               LEFT JOIN bancos b ON b.id = pg.id_banco_archivo
+               LEFT JOIN bancos b ON b.id = COALESCE(pg.id_banco_archivo, pg.id_banco_factura)
               WHERE pg.id_predio = ?
               ORDER BY pg.fecha_pago DESC, pg.id DESC",
             [$id]
