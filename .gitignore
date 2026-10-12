@@ -1,0 +1,7 @@
+# Configuración real (claves): nunca al repositorio público.
+config.local.php
+config/config.local.php
+# Marcas de recálculo y archivos temporales.
+var/
+# Pruebas locales con datos de contribuyentes.
+pruebas/datos/
