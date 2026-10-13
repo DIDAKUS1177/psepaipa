@@ -88,3 +88,45 @@ estructura; Paipa no tenía copia local). `config/config.local.php` apunta ahí.
 - Paz y salvo.
 - Probar contra una copia de la base de Paipa antes de publicar (las cifras de Guateque
   traen intereses en 0).
+
+## Producción (desde el 2026-10-12)
+
+- **Publicado** en https://psepaipa.erpsoftsas.com. La raíz del dominio en Plesk es
+  `psepaipa-cafc64f/public`; antes era `psepaipa.erpsoftsas.com` (el Angular viejo, que
+  sigue intacto). Para volver atrás: Hosting > Raíz del documento > `psepaipa.erpsoftsas.com`.
+- **Conexión**: `config.local.php` (en la carpeta de la versión, fuera de `public/`) usa
+  `db_appsettings` = `dirname(__DIR__)/serviciospsepaipa.erpsoftsas.com/appsettings.json`
+  (cadena "SQLDeveloper", base `erpsofts_paipa`). Nadie copió la clave.
+- **Despliegue**: el "Pull ahora" del Git de Plesk (dominio psepaipa, a `\psepaipa-portal`)
+  se trabó en 27a5a4a, igual que pasó con ICA. Lo que funcionó: Archivos > + > Importar
+  archivo mediante URL `https://codeload.github.com/DIDAKUS1177/psepaipa/zip/<commit>`,
+  renombrar a `.zip`, Archivo > Extraer (crea `psepaipa-<commit>/`), copiar
+  `config.local.php` y cambiar la raíz del documento. Cambios de un archivo: importar
+  `https://raw.githubusercontent.com/DIDAKUS1177/psepaipa/<commit>/<ruta>` en su carpeta.
+- **Verificación**: Tareas programadas > Ejecutar un script PHP (8.3) >
+  `<carpeta>/herramientas/verificar.php` > "Ejecutar ahora" (sin guardar la tarea). Plesk
+  corta la salida larga; "se completó correctamente" = todas las comprobaciones en OK.
+- **Límites de uso**: en IIS el proceso web NO puede escribir en la carpeta de la
+  aplicación; `Limites` usa entonces la carpeta de sesiones de PHP. Comprobado en vivo:
+  el sexto intento fallido de un documento queda bloqueado aunque cambie la sesión.
+
+## Revisión antes de producción (2026-10-12, tres revisores)
+
+- **Factura**: el cálculo oficial guardaba ANTES de validar (reescribía vigencias pagadas
+  y creaba años). Ahora `Predios::validarRango` va primero y el cálculo corre dentro de la
+  transacción de la numeración. Números: no se reutiliza uno de otro predio, pagado o ya en
+  `pagos` (el recaudo por archivo busca solo por número); se saltan los usados; al
+  renumerar se libera el viejo. Límites: 10 facturas nuevas por usuario y 4 por predio al
+  día, y freno global de 300 por hora (consulta a la base).
+- **Identidad**: la inscripción no prueba que el documento sea de quien se inscribe (igual
+  que el PSE viejo), así que nombre y documento del propietario van ocultos SIEMPRE. Un
+  predio ajeno solo se abre después de buscarlo (`Predios::permitido`). Pendiente si el
+  cliente lo quiere: verificar la propiedad (p. ej. con el número de la última factura).
+- **Huecos**: predios con años no seguidos se pagan por bloques (`data-bloque`); al abrir se
+  cotiza el primer bloque (`Predios::rangoInicial`).
+- **Fechas** a SQL Server en ISO (`Y-m-d\TH:i:s`): con un login en español, `Y-m-d` se lee
+  día-mes. Errores de la base nunca llegan al usuario (`AvisoUsuario`).
+- Pendiente de confirmar con Paipa: el sistema oficial imprime en Paipa solo el código de
+  barras del tercer cupón cuando hay varios; el portal imprime todos los vigentes.
+- Pruebas locales: `pruebas/datos/probar_factura.php` (12), `probar_cuentas.php` (16),
+  y en el scratchpad `funcional.py` (18) y `otros.py` (14).
