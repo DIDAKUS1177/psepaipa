@@ -12,9 +12,37 @@ declare(strict_types=1);
 
 final class Limites
 {
+    private static ?string $carpeta = null;
+
+    /**
+     * Primera carpeta escribible de: 'dir_datos' del config, var/ del
+     * proyecto, la carpeta de sesiones de PHP y la temporal. En Plesk/IIS el
+     * proceso web no puede escribir en la carpeta de la aplicación (pasó lo
+     * mismo en ICA), pero sí donde guarda las sesiones.
+     */
     public static function carpeta(): string
     {
-        return (string) (config('dir_datos') ?: RAIZ . '/var') . '/limites';
+        if (self::$carpeta !== null) {
+            return self::$carpeta;
+        }
+        $candidatas = array_filter([
+            config('dir_datos') ? config('dir_datos') . '/limites' : null,
+            RAIZ . '/var/limites',
+            session_save_path() !== '' ? rtrim(preg_replace('/^\d+;/', '', session_save_path()), '/\\') . '/psepaipa-limites' : null,
+            rtrim(sys_get_temp_dir(), '/\\') . '/psepaipa-limites',
+        ]);
+        foreach ($candidatas as $dir) {
+            if (!is_dir($dir)) {
+                @mkdir($dir, 0775, true);
+            }
+            $prueba = $dir . '/.prueba-' . getmypid();
+            if (@file_put_contents($prueba, '1') !== false) {
+                @unlink($prueba);
+                return self::$carpeta = $dir;
+            }
+        }
+        error_log('[psepaipa] Ninguna carpeta escribible para los límites de uso: no están funcionando.');
+        return self::$carpeta = RAIZ . '/var/limites';
     }
 
     private static function ruta(string $clave): string
@@ -48,10 +76,6 @@ final class Limites
     public static function anotar(string $clave): void
     {
         $dir = self::carpeta();
-        if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
-            error_log('[psepaipa] No se puede crear ' . $dir . ': los límites de uso no están funcionando.');
-            return;
-        }
         $r = self::ruta($clave);
         $f = @fopen($r, 'c+');
         if ($f === false) {
@@ -79,11 +103,7 @@ final class Limites
     /** ¿Se puede escribir la carpeta? (para la verificación). */
     public static function escribible(): bool
     {
-        $dir = self::carpeta();
-        if (!is_dir($dir)) {
-            @mkdir($dir, 0775, true);
-        }
-        $prueba = $dir . '/.prueba';
+        $prueba = self::carpeta() . '/.prueba';
         $ok = @file_put_contents($prueba, '1') !== false;
         @unlink($prueba);
         return $ok;
