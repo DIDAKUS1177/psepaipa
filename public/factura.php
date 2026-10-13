@@ -22,6 +22,7 @@ try {
     if ($p === null) {
         throw new AvisoUsuario('No encontramos ese predio. Búscalo de nuevo por su referencia catastral.');
     }
+    PagoLinea::refrescar($id);
     $f = Factura::generar($id, $desde, $hasta, (int) $u['id']);
 } catch (AvisoUsuario $e) {
     PdfPredial::error($e->getMessage(), $id);

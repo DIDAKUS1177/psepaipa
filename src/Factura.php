@@ -56,6 +56,12 @@ final class Factura
         try {
             Db::candado('psepaipa_factura_' . $idPredio);
 
+            // Con un pago en línea en curso no se renumera: el pago llegaría
+            // con un número que ya no tienen las vigencias.
+            if (PagoLinea::enTramite($idPredio) !== null) {
+                throw new AvisoUsuario('Este predio tiene un pago en línea en curso. Espera a que el banco lo confirme antes de generar otra factura.');
+            }
+
             // 1. Validar ANTES del cálculo oficial.
             Predios::validarRango($idPredio, $desde, $hasta, true);
 

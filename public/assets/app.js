@@ -161,6 +161,7 @@
 
     form.addEventListener('submit', function (ev) {
         var accion = ev.submitter && ev.submitter.getAttribute('formaction');
+        if (accion === 'pagar.php') { return; }
         avisar(accion === 'estado-cuenta.php'
             ? 'Preparando el estado de cuenta: se abrirá en una pestaña nueva.'
             : 'Generando tu factura: se abrirá en una pestaña nueva. Revisa que el navegador no la haya bloqueado.');

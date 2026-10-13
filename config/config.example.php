@@ -50,6 +50,22 @@ return [
     // recálculo que hace SP_CALCULO_PREDIAL desde el portal.
     'usuario_sistema' => 1,
 
+    // Pago en línea con AvalPay (PlacetoPay), el mismo comercio de ICA. Las
+    // credenciales van SOLO en config.local.php del servidor. Sin url, login y
+    // secret el botón "Pagar en línea" no aparece. En AvalPay se registra como
+    // URL de notificación https://<dominio>/avalpay-aviso.php, y en Plesk una
+    // tarea cada 15 minutos: herramientas/verificar-pagos.php.
+    // 'avalpay' => [
+    //     'url'             => 'https://checkout.avalpaycenter.com/api',
+    //     'login'           => '',
+    //     'secret'          => '',
+    //     'activo'          => true,
+    //     'usuarios_prueba' => [],   // documentos; vacío = todos ven el botón
+    //     'proveedor'       => 5,    // generacion_pagos.proveedor de este portal
+    //     'id_banco'        => 0,    // bancos.id del PSE; 0 = el de asobancaria 999
+    //     'politica_datos'  => '',   // URL de la política de tratamiento de datos
+    // ],
+
     // Zona horaria de las fechas que ve el contribuyente.
     'zona_horaria' => 'America/Bogota',
 

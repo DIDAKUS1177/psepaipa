@@ -47,7 +47,18 @@ try {
     paso('Conecta a SQL Server', $version !== '', strtok($version, "\n"));
 } catch (Throwable $t) {
     paso('Conecta a SQL Server', false, $t->getMessage());
-    echo PHP_EOL . "$ok de $n" . PHP_EOL;
+    // Pago en línea (AvalPay): solo si está configurado.
+if (AvalPay::configurado()) {
+    $prov = PagoLinea::proveedor();
+    $ajenos = (int) Db::valor('SELECT COUNT(*) FROM generacion_pagos WHERE proveedor = ? AND (Impuesto IS NULL OR Impuesto NOT LIKE ?)', [$prov, 'Predial %']);
+    paso("generacion_pagos: proveedor $prov solo lo usa este portal", $ajenos === 0, $ajenos . ' filas ajenas');
+    paso('Banco PSE para registrar el pago', (int) config('avalpay.id_banco', 0) > 0 || Db::valor("SELECT COUNT(*) FROM bancos WHERE asobancaria = '999'") > 0);
+    $usuarioPagos = (int) Db::valor("SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('pagos') AND name = 'id_usuario'");
+    paso('Tabla pagos con las columnas esperadas', (int) Db::valor("SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('pagos') AND name IN ('numero_recibo','valor_facturado','origen','acuerdo')") === 4, $usuarioPagos ? 'con id_usuario' : 'sin id_usuario');
+    paso('AvalPay activo para', true, config('avalpay.activo', false) ? (config('avalpay.usuarios_prueba') ? 'solo usuarios de prueba' : 'todos') : 'nadie (activo = false)');
+}
+
+echo PHP_EOL . "$ok de $n" . PHP_EOL;
     exit(1);
 }
 
@@ -78,6 +89,17 @@ if ($predio !== null) {
     paso('La cotización no dejó cambios en la base', $antes === $despues);
 } else {
     paso('Hay predios con deuda para probar el cálculo', false);
+}
+
+// Pago en línea (AvalPay): solo si está configurado.
+if (AvalPay::configurado()) {
+    $prov = PagoLinea::proveedor();
+    $ajenos = (int) Db::valor('SELECT COUNT(*) FROM generacion_pagos WHERE proveedor = ? AND (Impuesto IS NULL OR Impuesto NOT LIKE ?)', [$prov, 'Predial %']);
+    paso("generacion_pagos: proveedor $prov solo lo usa este portal", $ajenos === 0, $ajenos . ' filas ajenas');
+    paso('Banco PSE para registrar el pago', (int) config('avalpay.id_banco', 0) > 0 || Db::valor("SELECT COUNT(*) FROM bancos WHERE asobancaria = '999'") > 0);
+    $usuarioPagos = (int) Db::valor("SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('pagos') AND name = 'id_usuario'");
+    paso('Tabla pagos con las columnas esperadas', (int) Db::valor("SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('pagos') AND name IN ('numero_recibo','valor_facturado','origen','acuerdo')") === 4, $usuarioPagos ? 'con id_usuario' : 'sin id_usuario');
+    paso('AvalPay activo para', true, config('avalpay.activo', false) ? (config('avalpay.usuarios_prueba') ? 'solo usuarios de prueba' : 'todos') : 'nadie (activo = false)');
 }
 
 echo PHP_EOL . "$ok de $n" . PHP_EOL;

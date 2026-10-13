@@ -53,6 +53,15 @@ try {
     error_log('[psepaipa] recibos emitidos: ' . $t->getMessage());
 }
 
+$pagoEnLinea = AvalPay::disponiblePara($u);
+$tramite = null;
+try {
+    PagoLinea::refrescar($id);
+    $tramite = PagoLinea::enTramite($id);
+} catch (Throwable $t) {
+    error_log('[psepaipa] pago en trámite: ' . $t->getMessage());
+}
+
 $pagables = array_values(array_filter($vigencias, fn($v) => $v['pagable']));
 $enAcuerdo = array_values(array_filter($vigencias, fn($v) => $v['estado'] === 'acuerdo'));
 // El valor a pagar es el del cupón oficial del rango, no la suma de filas: el
@@ -148,7 +157,14 @@ Vista::abrir('Predio ' . $p['codigo_predio'], ['titulo' => 'Impuesto Predial Uni
         <aside class="tarjeta valor-pagar" aria-labelledby="t-valor">
             <p class="oculto" role="status" data-anuncio></p>
             <h2 id="t-valor" class="tarjeta-titulo">Valor a pagar</h2>
-            <?php if ($pagables): ?>
+            <?php if ($tramite !== null): ?>
+                <div class="pago-curso">
+                    <?= Vista::icono('reloj') ?>
+                    <p class="al-dia-titulo">Pago en línea en curso</p>
+                    <p>La factura <?= e(trim((string) $tramite['factura'])) ?> (<?= e($tramite['Impuesto']) ?>, <span class="sin-cortar"><?= pesos($tramite['total']) ?></span>) está en proceso con el banco. Cuando se confirme, se verá aquí; mientras tanto no se puede generar otra factura de este predio.</p>
+                    <a class="boton boton-contorno" href="<?= e(PagoLinea::urlRetorno((int) $tramite['IdGeneraPado'])) ?>"><?= Vista::icono('reloj') ?>Ver estado del pago</a>
+                </div>
+            <?php elseif ($pagables): ?>
                 <p class="valor-vigencias" data-vigencias-texto>Pagar vigencia<span data-plural <?= $primero === $ultimo ? 'hidden' : '' ?>>s</span> <strong data-rango><?= e($rango) ?></strong></p>
                 <div class="valor-bloque">
                     <div>
@@ -191,9 +207,15 @@ Vista::abrir('Predio ' . $p['codigo_predio'], ['titulo' => 'Impuesto Predial Uni
                     <div class="menu-boton" data-menu>
                         <button type="button" class="boton boton-primario" aria-haspopup="true" aria-expanded="false" data-menu-boton data-requiere-cotizacion><?= Vista::icono('pagar') ?>Pagar<?= Vista::icono('abajo', 'flecha') ?></button>
                         <div class="menu-lista menu-derecha" role="menu" hidden>
+                            <?php if ($pagoEnLinea): ?>
+                            <button type="submit" role="menuitem" formaction="pagar.php" formtarget="_self" data-requiere-cotizacion data-pago-linea>
+                                <?= Vista::icono('pagar') ?><span><strong>Pagar en línea (PSE)</strong><small>Débito desde tu cuenta bancaria.</small></span>
+                            </button>
+                            <?php else: ?>
                             <button type="button" role="menuitem" disabled>
                                 <?= Vista::icono('pagar') ?><span><strong>Pagar en línea (PSE)</strong><small>Muy pronto en este portal.</small></span>
                             </button>
+                            <?php endif; ?>
                             <button type="submit" role="menuitem" formaction="factura.php" data-requiere-cotizacion>
                                 <?= Vista::icono('banco') ?><span><strong>Pagar en banco</strong><small>Descarga la factura con código de barras.</small></span>
                             </button>

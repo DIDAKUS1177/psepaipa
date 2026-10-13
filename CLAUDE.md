@@ -10,13 +10,17 @@ del despliegue, fuera de `public/`.
 
 ```
 public/        raíz web (en Plesk el docroot debe apuntar aquí)
+  pagar.php    resumen del pago en línea y salida a AvalPay
+  retorno.php  resultado del pago (vuelta de AvalPay)
+  avalpay-aviso.php  URL de notificación de AvalPay
   index.php    iniciar sesión / inscribirse
   inicio.php   mis predios + buscar otro predio por referencia catastral
   predio.php   información, estado financiero por vigencia, valor a pagar
   cotizar.php  JSON: valor exacto de un rango de vigencias (sin guardar)
   factura.php  PDF de la liquidación oficial con código de barras GS1-128
   estado-cuenta.php  PDF informativo de las vigencias elegidas (no guarda nada)
-src/           Db, Cuentas, Predios, Factura, PdfPredial, Vista, arranque
+src/           Db, Cuentas, Predios, Factura, PdfPredial, Vista, AvalPay, PagoLinea, arranque
+herramientas/  verificar.php (comprobación en el servidor), verificar-pagos.php (tarea)
 lib/tcpdf      TCPDF recortado (las fuentes básicas)
 config/        config.example.php (sin claves)
 pruebas/datos  (gitignored) scripts y cuenta de prueba local
@@ -79,11 +83,34 @@ http://localhost:8082, con el docroot cambiado a `public/`. Base: copia de la de
 de **Guateque** restaurada como `predial_guateque` en el SQL Server de Docker (misma
 estructura; Paipa no tenía copia local). `config/config.local.php` apunta ahí.
 
+## Pago en línea (AvalPay, 2026-10-13)
+
+Misma integración de ICA (`src/AvalPay.php`, de `business/class.placetopay.php`): sesión con
+`paymentMethod = pse`, consulta autenticada, firma del aviso SHA-1 o `sha256:`.
+
+- **Flujo**: predio → Pagar → «Pagar en línea (PSE)» (`pagar.php`): resumen con el valor de hoy y
+  aceptación del tratamiento de datos (certificación) → genera/reutiliza la factura, anota el
+  intento y manda a AvalPay. La referencia en AvalPay es el número de factura. Vuelve a
+  `retorno.php?i=&t=` (enlace firmado, no exige la sesión del portal).
+- **Intentos**: `generacion_pagos` (la tabla del PSE viejo), `proveedor = 5` (config
+  `avalpay.proveedor`), `referencia = id del predio`, `Impuesto = "Predial AAAA[-AAAA]"`.
+  Mientras haya uno abierto con sesión, el predio no abre otro pago ni genera facturas
+  (`PagoLinea::enTramite`; `refrescar()` consulta los vencidos).
+- **Registro** (`PagoLinea::registrar`, como `UploadController`): INSERT `pagos` (origen 'A',
+  banco = asobancaria 999), `predios_pagos.pagado = -1` con `valor_pago = total_calculo`, y
+  `predios.ultimo_anio_pago`. Con candado por factura e idempotente. Si la factura ya estaba en
+  `pagos` → DOBLE; si cambiaron sus vigencias o entró menos de lo que vale → REVISAR (no
+  registra; se concilia a mano).
+- **Respaldo**: `avalpay-aviso.php` (URL de notificación en AvalPay) y la tarea
+  `herramientas/verificar-pagos.php` cada 15 minutos.
+- **Pruebas**: simulador `pruebas/datos/stub_avalpay.php` en el contenedor `avalpay_stub`
+  (puerto 9090); `config/config.local.php` apunta a `host.docker.internal:9090/api`.
+  `pago.py` del scratchpad: 21/21 (aprobado, rechazado, pendiente + tarea, aviso, valor menor).
+
 ## Pendiente
 
-- Pago en línea con AvalPay (como ICA): falta el sitio/credenciales de predial y decidir
-  cómo se registra el pago en la base oficial (`pagos` + `predios_pagos.pagado = -1` +
-  `predios.ultimo_anio_pago`, como el recaudo por archivo del sistema oficial).
+- AvalPay: hecho y probado contra un simulador local (ver «Pago en línea»); falta poner las
+  credenciales en el `config.local.php` del servidor, registrar la URL de aviso y la tarea.
 - Recuperar la contraseña por correo (hoy remite a la Dirección de Impuestos).
 - Paz y salvo.
 - Probar contra una copia de la base de Paipa antes de publicar (las cifras de Guateque

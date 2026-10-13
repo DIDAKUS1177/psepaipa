@@ -49,6 +49,8 @@ require_once __DIR__ . '/Limites.php';
 require_once __DIR__ . '/Cuentas.php';
 require_once __DIR__ . '/Predios.php';
 require_once __DIR__ . '/Factura.php';
+require_once __DIR__ . '/AvalPay.php';
+require_once __DIR__ . '/PagoLinea.php';
 require_once __DIR__ . '/Vista.php';
 
 $esHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')

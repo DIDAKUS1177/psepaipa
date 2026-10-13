@@ -531,3 +531,41 @@ button { font: inherit; }
     .menu a { flex: 1 1 auto; justify-content: center; font-size: 13px; padding: 11px 6px; }
     .menu a svg { display: none; }
 }
+
+/* ---------- Pago en línea (resumen y resultado) ---------- */
+.pago-resumen .tarjeta { max-width: 640px; width: 100%; margin-inline: auto; }
+.pago-filas { display: grid; margin: 0; border: 1px solid var(--linea); border-radius: 12px; overflow: hidden; }
+.pago-filas > div { display: flex; justify-content: space-between; gap: 16px; padding: 11px 16px; border-bottom: 1px solid var(--linea); }
+.pago-filas > div:last-child { border-bottom: 0; }
+.pago-filas dt { color: var(--tenue); font-size: 14px; }
+.pago-filas dd { margin: 0; font-weight: 600; text-align: right; overflow-wrap: anywhere; }
+.pago-filas .pago-total { background: var(--suave); align-items: baseline; }
+.pago-filas .pago-total dt { color: var(--tinta); font-weight: 700; }
+.pago-filas .pago-total dd { font-size: 22px; font-variant-numeric: tabular-nums; color: var(--primario-oscuro); }
+.pago-filas small { font-size: 12px; color: var(--tenue); font-weight: 600; }
+.pago-form { display: grid; gap: 18px; margin-top: 20px; }
+.pago-acepto { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.45; cursor: pointer; }
+.pago-acepto input { width: 18px; height: 18px; margin-top: 1px; flex: none; accent-color: var(--primario-oscuro); }
+.pago-botones { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+.pago-form .pago-botones { margin-top: 0; }
+.pago-cabeza { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 18px; }
+.pago-cabeza p { margin: 0; color: var(--tenue); }
+.pago-cabeza .tarjeta-titulo { margin-bottom: 4px; }
+.pago-icono { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 50%; flex: none; }
+.pago-icono svg { width: 24px; height: 24px; }
+.pago-ok .pago-icono { background: var(--ok-fondo); color: var(--ok); }
+.pago-pendiente .pago-icono { background: var(--info-fondo); color: var(--info); }
+.pago-alerta .pago-icono { background: var(--alerta-fondo); color: var(--alerta); }
+.pago-error .pago-icono { background: var(--pendiente-fondo); color: var(--pendiente); }
+.pago-ok .tarjeta-titulo { color: var(--ok); }
+.pago-error .tarjeta-titulo { color: var(--pendiente); }
+.pago-curso { display: grid; justify-items: center; text-align: center; gap: 8px; padding: 8px 0; }
+.pago-curso > svg { width: 44px; height: 44px; color: var(--info); }
+.pago-curso .al-dia-titulo { color: var(--info); }
+.pago-curso p:not(.al-dia-titulo) { margin: 0; color: var(--tenue); font-size: 14px; }
+@media (max-width: 480px) {
+    .pago-filas > div { flex-direction: column; gap: 2px; }
+    .pago-filas dd { text-align: left; }
+    .pago-botones .boton { flex: 1 1 100%; justify-content: center; }
+}
+.sin-cortar { white-space: nowrap; }
