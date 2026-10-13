@@ -130,7 +130,7 @@ final class Vista
                         <button class="boton-salir" type="submit" aria-label="Salir"><?= self::icono('salir') ?><span>Salir</span></button>
                     </form>
                 </div>
-            <?php else: ?>
+            <?php elseif ($seccion !== 'entrada'): ?>
                 <a class="boton boton-contorno boton-chico" href="./?v=inscribirse">Registrarse</a>
                 <a class="boton boton-primario boton-chico" href="./"><?= self::icono('entrar') ?>Iniciar sesión</a>
             <?php endif; ?>

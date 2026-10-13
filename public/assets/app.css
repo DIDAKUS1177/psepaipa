@@ -197,7 +197,10 @@ button { font: inherit; }
 .toast.visible { transform: translate(-50%, 0); opacity: 1; }
 
 /* ===================== Entrada (login) ===================== */
-.entrada { position: relative; isolation: isolate; display: flex; overflow: hidden; color: #fff; background: var(--profundo); }
+/* La portada ocupa todo el alto disponible hasta el pie: sin franja gris
+   debajo de la foto, en ninguna pantalla. */
+.pagina-entrada main { display: flex; flex-direction: column; }
+.entrada { position: relative; isolation: isolate; display: flex; flex: 1 0 auto; overflow: hidden; color: #fff; background: var(--profundo); }
 .entrada-foto {
     position: absolute; inset: -2%; z-index: -2;
     background: url("img/fondo-paipa.jpg") center 58% / cover no-repeat;
@@ -522,4 +525,9 @@ button { font: inherit; }
 @media (max-width: 700px) {
     .tabla-responsiva .chip { justify-self: start; }
     .tabla-responsiva th.mono { padding: 0; }
+}
+@media (max-width: 480px) {
+    .menu-fila { flex-wrap: nowrap; justify-content: space-between; padding-inline: 8px; }
+    .menu a { flex: 1 1 auto; justify-content: center; font-size: 13px; padding: 11px 6px; }
+    .menu a svg { display: none; }
 }
