@@ -18,21 +18,18 @@ $desde = (int) ($_POST['desde'] ?? 0);
 $hasta = (int) ($_POST['hasta'] ?? 0);
 
 try {
-    $p = Predios::detalle($id);
+    $p = Predios::permitido($id, $u['documento']) ? Predios::detalle($id) : null;
     if ($p === null) {
-        throw new RuntimeException('No encontramos ese predio.');
+        throw new AvisoUsuario('No encontramos ese predio. Búscalo de nuevo por su referencia catastral.');
     }
-    $f = Factura::generar($id, $desde, $hasta);
-} catch (RuntimeException $e) {
-    aviso($e->getMessage(), 'error');
-    redirigir('predio.php?id=' . $id);
+    $f = Factura::generar($id, $desde, $hasta, (int) $u['id']);
+} catch (AvisoUsuario $e) {
+    PdfPredial::error($e->getMessage(), $id);
 } catch (Throwable $t) {
     error_log('[psepaipa] factura predio ' . $id . ': ' . $t->getMessage());
-    aviso('No pudimos generar la factura en este momento. Intenta de nuevo en unos minutos.', 'error');
-    redirigir('predio.php?id=' . $id);
+    PdfPredial::error('No pudimos generar la factura en este momento. Intenta de nuevo en unos minutos.', $id);
 }
 
-$propio = Predios::esPropietario($id, $u['documento']);
 $numero = $f['numero'];
 $ciudad = (string) config('municipio.ciudad');
 
@@ -43,7 +40,7 @@ $pdf->MultiCell(PdfPredial::ANCHO, 3.4,
     'La Dirección de Impuestos del Municipio de ' . $ciudad . ', según el Acuerdo 019 de 2022, Decreto 009 de 2017, Decreto 011 de 2017, '
     . 'Resolución 090 de 2017 y Resolución 004 de 2024, determina oficialmente los siguientes periodos gravables del Impuesto Predial '
     . 'Unificado, según los valores e información siguiente:', 0, 'J');
-PdfPredial::predio($pdf, $p, $propio);
+PdfPredial::predio($pdf, $p);
 PdfPredial::vigencias($pdf, $f['filas']);
 
 // ---------- Cupones con código de barras ----------

@@ -27,8 +27,18 @@ if ($p === null) {
     redirigir('inicio.php');
 }
 
-$propio = Predios::esPropietario($id, $u['documento']);
-$cotizacion = Predios::cotizar($id);
+try {
+    if (!Predios::permitido($id, $u['documento'])) {
+        aviso('Para pagar el predio de otra persona, búscalo por su referencia catastral en «Otros predios».', 'info');
+        redirigir('inicio.php?vista=otros');
+    }
+    $propio = Predios::esPropietario($id, $u['documento']);
+    $cotizacion = Predios::cotizar($id);
+} catch (Throwable $t) {
+    error_log('[psepaipa] predio ' . $id . ': ' . $t->getMessage());
+    aviso('No pudimos calcular el estado de cuenta de este predio en este momento. Intenta de nuevo en unos minutos.', 'error');
+    redirigir('inicio.php');
+}
 $alDia = $cotizacion['ok'];
 $vigencias = $cotizacion['filas'];
 $pagos = $recibos = [];
@@ -49,15 +59,32 @@ $enAcuerdo = array_values(array_filter($vigencias, fn($v) => $v['estado'] === 'a
 // procedimiento aplica descuentos según los años que se pagan juntos.
 $totalTodo = $cotizacion['total'];
 $desglose = $cotizacion['desglose'];
+// Los datos del propietario van ocultos para TODOS: la cuenta no prueba que
+// quien se inscribió con un documento sea su dueño (no hay verificación).
 $principal = $p['propietarios'][0] ?? null;
-$nombreDueno = $principal ? (string) $principal['nombre'] : '';
-$docDueno = $principal ? (string) $principal['identificacion'] : '';
-if (!$propio) {
-    $nombreDueno = Predios::enmascararNombre($nombreDueno);
-    $docDueno = Predios::enmascararDocumento($docDueno);
+$nombreDueno = $principal ? Predios::enmascararNombre((string) $principal['nombre']) : '';
+$docDueno = $principal ? Predios::enmascararDocumento((string) $principal['identificacion']) : '';
+
+// Bloques de vigencias seguidas: un pago no puede saltar un año que no está
+// pendiente. Al abrir queda marcado el bloque que se cotizó.
+$bloque = 0;
+$anterior = null;
+foreach ($vigencias as $k => $v) {
+    if (!$v['pagable']) {
+        continue;
+    }
+    if ($anterior !== null && $v['anio'] !== $anterior + 1) {
+        $bloque++;
+    }
+    $vigencias[$k]['bloque'] = $bloque;
+    $vigencias[$k]['marcada'] = $cotizacion['desde'] !== null && $v['anio'] >= $cotizacion['desde'] && $v['anio'] <= $cotizacion['hastaAnio'];
+    $anterior = $v['anio'];
 }
-$primero = $pagables[0]['anio'] ?? null;
-$ultimo = $pagables ? end($pagables)['anio'] : null;
+$hayBloques = $bloque > 0;
+$pagables = array_values(array_filter($vigencias, fn($v) => $v['pagable']));
+$marcadas = array_values(array_filter($pagables, fn($v) => $v['marcada']));
+$primero = $marcadas[0]['anio'] ?? null;
+$ultimo = $marcadas ? end($marcadas)['anio'] : null;
 $rango = $primero === null ? '' : ($primero === $ultimo ? (string) $primero : $primero . ' – ' . $ultimo);
 $etiquetasDesglose = [
     'impuesto'  => 'Impuesto predial',
@@ -110,7 +137,7 @@ Vista::abrir('Predio ' . $p['codigo_predio'], ['titulo' => 'Impuesto Predial Uni
                     <?php if (count($p['propietarios']) > 1): ?>
                     <div class="datos-ancho"><dt>Copropietarios</dt><dd>
                         <?php foreach (array_slice($p['propietarios'], 1) as $co): ?>
-                            <span class="copropietario"><?= e($propio ? $co['nombre'] : Predios::enmascararNombre((string) $co['nombre'])) ?></span>
+                            <span class="copropietario"><?= e(Predios::enmascararNombre((string) $co['nombre'])) ?></span>
                         <?php endforeach; ?>
                     </dd></div>
                     <?php endif; ?>
@@ -118,10 +145,11 @@ Vista::abrir('Predio ' . $p['codigo_predio'], ['titulo' => 'Impuesto Predial Uni
             </details>
         </section>
 
-        <aside class="tarjeta valor-pagar" aria-labelledby="t-valor" aria-live="polite">
+        <aside class="tarjeta valor-pagar" aria-labelledby="t-valor">
+            <p class="oculto" role="status" data-anuncio></p>
             <h2 id="t-valor" class="tarjeta-titulo">Valor a pagar</h2>
             <?php if ($pagables): ?>
-                <p class="valor-vigencias">Pagar vigencia<span data-plural <?= $primero === $ultimo ? 'hidden' : '' ?>>s</span> <strong data-rango><?= e($rango) ?></strong></p>
+                <p class="valor-vigencias" data-vigencias-texto>Pagar vigencia<span data-plural <?= $primero === $ultimo ? 'hidden' : '' ?>>s</span> <strong data-rango><?= e($rango) ?></strong></p>
                 <div class="valor-bloque">
                     <div>
                         <p class="etiqueta">Fecha límite de pago</p>
@@ -150,7 +178,7 @@ Vista::abrir('Predio ' . $p['codigo_predio'], ['titulo' => 'Impuesto Predial Uni
                     <input type="hidden" name="hasta" value="<?= (int) $ultimo ?>" data-hasta>
 
                     <div class="menu-boton" data-menu>
-                        <button type="button" class="boton boton-contorno" aria-haspopup="true" aria-expanded="false" data-menu-boton><?= Vista::icono('imprimir') ?>Imprimir<?= Vista::icono('abajo', 'flecha') ?></button>
+                        <button type="button" class="boton boton-contorno" aria-haspopup="true" aria-expanded="false" data-menu-boton data-requiere-cotizacion><?= Vista::icono('imprimir') ?>Imprimir<?= Vista::icono('abajo', 'flecha') ?></button>
                         <div class="menu-lista" role="menu" hidden>
                             <button type="submit" role="menuitem" formaction="factura.php" data-requiere-cotizacion>
                                 <?= Vista::icono('banco') ?><span><strong>Factura para pagar en banco</strong><small>Con código de barras. Asigna número de factura.</small></span>
@@ -161,7 +189,7 @@ Vista::abrir('Predio ' . $p['codigo_predio'], ['titulo' => 'Impuesto Predial Uni
                         </div>
                     </div>
                     <div class="menu-boton" data-menu>
-                        <button type="button" class="boton boton-primario" aria-haspopup="true" aria-expanded="false" data-menu-boton><?= Vista::icono('pagar') ?>Pagar<?= Vista::icono('abajo', 'flecha') ?></button>
+                        <button type="button" class="boton boton-primario" aria-haspopup="true" aria-expanded="false" data-menu-boton data-requiere-cotizacion><?= Vista::icono('pagar') ?>Pagar<?= Vista::icono('abajo', 'flecha') ?></button>
                         <div class="menu-lista menu-derecha" role="menu" hidden>
                             <button type="button" role="menuitem" disabled>
                                 <?= Vista::icono('pagar') ?><span><strong>Pagar en línea (PSE)</strong><small>Muy pronto en este portal.</small></span>
@@ -194,14 +222,14 @@ Vista::abrir('Predio ' . $p['codigo_predio'], ['titulo' => 'Impuesto Predial Uni
             <button role="tab" aria-selected="false" aria-controls="p-historico" id="b-historico" tabindex="-1"><?= Vista::icono('reloj') ?>Histórico de pagos</button>
         </div>
 
-        <div role="tabpanel" id="p-estado" aria-labelledby="b-estado">
+        <div role="tabpanel" id="p-estado" aria-labelledby="b-estado" tabindex="0">
             <?php if (!$vigencias): ?>
                 <div class="vacio vacio-chico"><?= Vista::icono('chequeo') ?><h3>Sin saldos pendientes</h3><p>Este predio no tiene vigencias por pagar.</p></div>
             <?php else: ?>
                 <div class="tabla-ayuda">
-                    <p><?= Vista::icono('info') ?><span>Marca las vigencias que vas a pagar. Se pagan años seguidos: si dejas uno en medio, se incluye. El total se recalcula con cada cambio.</span></p>
+                    <p><?= Vista::icono('info') ?><span>Marca las vigencias que vas a pagar. Se pagan años seguidos: si dejas uno en medio, se incluye. El total se recalcula con cada cambio.<?= $hayBloques ? ' Este predio tiene vigencias no seguidas: se pagan por grupos, en facturas separadas.' : '' ?></span></p>
                     <?php if ($pagables): ?>
-                    <p class="tabla-seleccion" data-resumen-seleccion><?= count($pagables) ?> de <?= count($pagables) ?> vigencias seleccionadas</p>
+                    <p class="tabla-seleccion" data-resumen-seleccion><?= count($marcadas) ?> de <?= count($pagables) ?> vigencias seleccionadas</p>
                     <?php endif; ?>
                 </div>
                 <div class="tabla-caja">
@@ -209,7 +237,7 @@ Vista::abrir('Predio ' . $p['codigo_predio'], ['titulo' => 'Impuesto Predial Uni
                         <caption class="oculto">Estado financiero por vigencia, en pesos</caption>
                         <thead>
                             <tr>
-                                <th scope="col" class="col-casilla"><input type="checkbox" aria-label="Seleccionar todas las vigencias" data-todas <?= $pagables ? 'checked' : 'disabled' ?>></th>
+                                <th scope="col" class="col-casilla"><?php if (!$hayBloques): ?><input type="checkbox" aria-label="Seleccionar todas las vigencias" data-todas <?= $pagables ? 'checked' : 'disabled' ?>><?php endif; ?></th>
                                 <th scope="col">Estado</th>
                                 <th scope="col">Vigencia</th>
                                 <th scope="col" class="num">Avalúo</th>
@@ -223,10 +251,10 @@ Vista::abrir('Predio ' . $p['codigo_predio'], ['titulo' => 'Impuesto Predial Uni
                         </thead>
                         <tbody>
                             <?php foreach ($vigencias as $v): ?>
-                            <tr data-anio="<?= $v['anio'] ?>" class="<?= $v['pagable'] ? 'seleccionada' : 'no-pagable' ?>">
+                            <tr data-anio="<?= $v['anio'] ?>" data-bloque="<?= (int) ($v['bloque'] ?? -1) ?>" class="<?= $v['pagable'] ? (!empty($v['marcada']) ? 'seleccionada' : '') : 'no-pagable' ?>">
                                 <td class="col-casilla">
                                     <?php if ($v['pagable']): ?>
-                                        <input type="checkbox" checked aria-label="Pagar la vigencia <?= $v['anio'] ?>" data-casilla>
+                                        <input type="checkbox" <?= !empty($v['marcada']) ? 'checked' : '' ?> aria-label="Pagar la vigencia <?= $v['anio'] ?>" data-casilla>
                                     <?php endif; ?>
                                 </td>
                                 <td>
@@ -267,7 +295,7 @@ Vista::abrir('Predio ' . $p['codigo_predio'], ['titulo' => 'Impuesto Predial Uni
             <?php endif; ?>
         </div>
 
-        <div role="tabpanel" id="p-recibos" aria-labelledby="b-recibos" hidden>
+        <div role="tabpanel" id="p-recibos" aria-labelledby="b-recibos" tabindex="0" hidden>
             <?php if (!$recibos): ?>
                 <div class="vacio vacio-chico"><?= Vista::icono('documento') ?><h3>Sin recibos emitidos</h3><p>Cuando generes una factura de este predio, aparecerá aquí.</p></div>
             <?php else: ?>
@@ -292,7 +320,7 @@ Vista::abrir('Predio ' . $p['codigo_predio'], ['titulo' => 'Impuesto Predial Uni
             <?php endif; ?>
         </div>
 
-        <div role="tabpanel" id="p-historico" aria-labelledby="b-historico" hidden>
+        <div role="tabpanel" id="p-historico" aria-labelledby="b-historico" tabindex="0" hidden>
             <?php if (!$pagos): ?>
                 <div class="vacio vacio-chico"><?= Vista::icono('reloj') ?><h3>Sin pagos registrados</h3><p>Aquí aparecen los pagos del predio cuando el banco los reporta.</p></div>
             <?php else: ?>

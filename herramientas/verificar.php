@@ -58,6 +58,7 @@ foreach (['predios', 'predios_pagos', 'propietarios', 'predios_propietarios', 'u
         paso("Tabla $tabla", false, $t->getMessage());
     }
 }
+paso('Carpeta de límites de uso escribible (por este usuario)', Limites::escribible(), Limites::carpeta());
 paso('Procedimiento SP_CALCULO_PREDIAL', (int) Db::valor("SELECT COUNT(*) FROM sys.procedures WHERE name = 'SP_CALCULO_PREDIAL'") === 1);
 $alcaldia = (string) Db::valor("SELECT TOP 1 valor FROM parametros WHERE nombre = 'alcaldia'");
 paso('Es la base del municipio configurado', stripos($alcaldia, (string) config('municipio.ciudad')) !== false, $alcaldia);

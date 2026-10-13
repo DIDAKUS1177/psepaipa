@@ -19,6 +19,7 @@ function responder(array $r, int $codigo = 200): void
 }
 
 if (usuario() === null) {
+    aviso('Tu sesión terminó por inactividad. Inicia sesión de nuevo.', 'info');
     responder(['ok' => false, 'sinSesion' => true, 'mensaje' => 'Tu sesión terminó. Inicia sesión de nuevo.'], 401);
 }
 if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !csrfValido($_POST['csrf'] ?? null)) {
@@ -29,12 +30,17 @@ $id = (int) ($_POST['id'] ?? 0);
 $desde = (int) ($_POST['desde'] ?? 0);
 $hasta = (int) ($_POST['hasta'] ?? 0);
 $anio = (int) date('Y');
-if ($id <= 0 || $desde < 1990 || $hasta > $anio || $desde > $hasta) {
+if ($id <= 0 || $desde < 1900 || $hasta > $anio || $desde > $hasta) {
     responder(['ok' => false, 'mensaje' => 'Las vigencias elegidas no son válidas.'], 400);
 }
 
+if (!Predios::permitido($id, usuario()['documento'])) {
+    responder(['ok' => false, 'mensaje' => 'Vuelve a buscar el predio por su referencia catastral.'], 403);
+}
 try {
     $c = Predios::cotizar($id, $desde, $hasta);
+} catch (AvisoUsuario $e) {
+    responder(['ok' => false, 'mensaje' => $e->getMessage()], 400);
 } catch (Throwable $t) {
     error_log('[psepaipa] cotizar.php: ' . $t->getMessage());
     responder(['ok' => false, 'mensaje' => 'No pudimos calcular el valor. Intenta de nuevo.'], 500);
@@ -56,7 +62,8 @@ foreach ($c['filas'] as $f) {
     ];
 }
 responder([
-    'ok'       => $c['ok'],
+    'ok'       => true,
+    'calculado' => $c['ok'],
     'total'    => pesos($c['total']),
     'hasta'    => fechaCorta($c['hasta']),
     'filas'    => $filas,

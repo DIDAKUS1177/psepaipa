@@ -40,18 +40,19 @@ final class Predios
         return Db::filas(
             "SELECT p.id, p.codigo_predio, p.codigo_predio_anterior, p.direccion, p.avaluo, p.ultimo_anio_pago,
                     z.descripcion AS zona, MIN(prp.jerarquia) AS jerarquia,
-                    (SELECT COUNT(*) FROM predios_pagos pp WHERE pp.id_predio = p.id AND " . self::SE_DEBE . ") AS vigencias_debe,
-                    (SELECT SUM(pp.total_calculo) FROM predios_pagos pp WHERE pp.id_predio = p.id AND " . self::SE_DEBE . ") AS total_debe,
-                    (SELECT MIN(pp.ultimo_anio) FROM predios_pagos pp WHERE pp.id_predio = p.id AND " . self::SE_DEBE . ") AS debe_desde
+                    d.vigencias_debe, d.total_debe, d.debe_desde
                FROM propietarios pr
                JOIN predios_propietarios prp ON prp.id_propietario = pr.id
                JOIN predios p ON p.id = prp.id_predio
                LEFT JOIN zonas z ON z.id = p.id_zona
+               OUTER APPLY (SELECT COUNT(*) AS vigencias_debe, SUM(pp.total_calculo) AS total_debe, MIN(pp.ultimo_anio) AS debe_desde
+                              FROM predios_pagos pp WHERE pp.id_predio = p.id AND " . self::SE_DEBE . ") d
               WHERE p.estado = 1
                 AND (REPLACE(REPLACE(REPLACE(pr.identificacion, '.', ''), '-', ''), ' ', '') = ?
                      OR (CHARINDEX('-', pr.identificacion) > 1
                          AND REPLACE(REPLACE(LEFT(pr.identificacion, CHARINDEX('-', pr.identificacion) - 1), '.', ''), ' ', '') = ?))
-              GROUP BY p.id, p.codigo_predio, p.codigo_predio_anterior, p.direccion, p.avaluo, p.ultimo_anio_pago, z.descripcion
+              GROUP BY p.id, p.codigo_predio, p.codigo_predio_anterior, p.direccion, p.avaluo, p.ultimo_anio_pago, z.descripcion,
+                       d.vigencias_debe, d.total_debe, d.debe_desde
               ORDER BY p.codigo_predio",
             [$doc, $doc]
         );
@@ -71,11 +72,11 @@ final class Predios
             "SELECT TOP 10 p.id, p.codigo_predio, p.codigo_predio_anterior, p.direccion, p.ultimo_anio_pago, z.descripcion AS zona,
                     (SELECT TOP 1 pr.nombre FROM predios_propietarios prp JOIN propietarios pr ON pr.id = prp.id_propietario
                       WHERE prp.id_predio = p.id ORDER BY prp.jerarquia) AS propietario,
-                    (SELECT COUNT(*) FROM predios_pagos pp WHERE pp.id_predio = p.id AND " . self::SE_DEBE . ") AS vigencias_debe,
-                    (SELECT SUM(pp.total_calculo) FROM predios_pagos pp WHERE pp.id_predio = p.id AND " . self::SE_DEBE . ") AS total_debe,
-                    (SELECT MIN(pp.ultimo_anio) FROM predios_pagos pp WHERE pp.id_predio = p.id AND " . self::SE_DEBE . ") AS debe_desde
+                    d.vigencias_debe, d.total_debe, d.debe_desde
                FROM predios p
                LEFT JOIN zonas z ON z.id = p.id_zona
+               OUTER APPLY (SELECT COUNT(*) AS vigencias_debe, SUM(pp.total_calculo) AS total_debe, MIN(pp.ultimo_anio) AS debe_desde
+                              FROM predios_pagos pp WHERE pp.id_predio = p.id AND " . self::SE_DEBE . ") d
               WHERE p.estado = 1
                 AND (REPLACE(REPLACE(p.codigo_predio, '-', ''), ' ', '') = ?
                      OR REPLACE(REPLACE(p.codigo_predio_anterior, '-', ''), ' ', '') = ?)
@@ -113,12 +114,107 @@ final class Predios
     /** ¿El documento es propietario (principal o no) del predio? */
     public static function esPropietario(int $id, string $documento): bool
     {
-        foreach (self::delDocumento($documento) as $p) {
-            if ((int) $p['id'] === $id) {
-                return true;
-            }
+        $doc = Cuentas::normalizarDocumento($documento);
+        if ($doc === '') {
+            return false;
+        }
+        return (int) Db::valor(
+            "SELECT COUNT(*) FROM predios_propietarios prp JOIN propietarios pr ON pr.id = prp.id_propietario
+              WHERE prp.id_predio = ?
+                AND (REPLACE(REPLACE(REPLACE(pr.identificacion, '.', ''), '-', ''), ' ', '') = ?
+                     OR (CHARINDEX('-', pr.identificacion) > 1
+                         AND REPLACE(REPLACE(LEFT(pr.identificacion, CHARINDEX('-', pr.identificacion) - 1), '.', ''), ' ', '') = ?))",
+            [$id, $doc, $doc]
+        ) > 0;
+    }
+
+    /**
+     * Predios que esta sesión puede abrir: los suyos y los que encontró
+     * buscando por referencia catastral. Así no se recorren todos por id.
+     */
+    public static function permitir(int $id): void
+    {
+        $_SESSION['predios_ok'][$id] = true;
+    }
+
+    public static function permitido(int $id, string $documento): bool
+    {
+        if (!empty($_SESSION['predios_ok'][$id])) {
+            return true;
+        }
+        if (self::esPropietario($id, $documento)) {
+            self::permitir($id);
+            return true;
         }
         return false;
+    }
+
+    /**
+     * Valida un rango ANTES de correr el cálculo oficial (que reescribe filas
+     * pagadas y crea años que no existían): todas las vigencias del rango deben
+     * existir y estar pendientes; solo la del año en curso puede faltar (la
+     * crea el cálculo), y solo si es el final del rango. Lanza AvisoUsuario.
+     */
+    public static function validarRango(int $id, int $desde, int $hasta, bool $bloquear = false): void
+    {
+        $anio = (int) date('Y');
+        if ($desde < 1900 || $hasta > $anio || $desde > $hasta) {
+            throw new AvisoUsuario('Las vigencias elegidas no son válidas.');
+        }
+        $existentes = [];
+        foreach (Db::filas(
+            'SELECT ultimo_anio, pagado, anulada, prescrito, acuerdo FROM predios_pagos' . ($bloquear ? ' WITH (UPDLOCK)' : '') . '
+              WHERE id_predio = ? AND ultimo_anio BETWEEN ? AND ?',
+            [$id, $desde, $hasta]
+        ) as $f) {
+            $existentes[(int) $f['ultimo_anio']] = $f;
+        }
+        for ($a = $desde; $a <= $hasta; $a++) {
+            if (!isset($existentes[$a])) {
+                if ($a === $anio && $a === $hasta) {
+                    continue;
+                }
+                throw new AvisoUsuario('La vigencia ' . $a . ' no está liquidada para este predio. Elige años seguidos de los que aparecen en el estado financiero.');
+            }
+            $f = $existentes[$a];
+            if ((int) $f['pagado'] !== 0 || (int) $f['anulada'] !== 0 || (int) $f['prescrito'] !== 0 || (int) $f['acuerdo'] !== 0) {
+                throw new AvisoUsuario('La vigencia ' . $a . ' ya no está pendiente de pago en línea. Vuelve a abrir el predio.');
+            }
+        }
+    }
+
+    /**
+     * Rango que se cotiza al abrir el predio: el primer bloque de vigencias
+     * pendientes SEGUIDAS (sin huecos), más la del año en curso si todavía no
+     * existe y el bloque llega hasta el año anterior. Sin deudas: el año en
+     * curso (el cálculo lo crea si falta, como el sistema oficial).
+     */
+    public static function rangoInicial(int $id): array
+    {
+        $anio = (int) date('Y');
+        $anios = array_map('intval', array_column(Db::filas(
+            'SELECT pp.ultimo_anio FROM predios_pagos pp WHERE pp.id_predio = ? AND ' . self::SE_DEBE . ' AND ISNULL(pp.acuerdo, 0) = 0 ORDER BY pp.ultimo_anio',
+            [$id]
+        ), 'ultimo_anio'));
+        $existeActual = (int) Db::valor('SELECT COUNT(*) FROM predios_pagos WHERE id_predio = ? AND ultimo_anio = ?', [$id, $anio]) > 0;
+        if (!$anios) {
+            if ($existeActual) {
+                return [null, null];
+            }
+            return [$anio, $anio];
+        }
+        $desde = $hasta = $anios[0];
+        foreach ($anios as $a) {
+            if ($a === $hasta + 1) {
+                $hasta = $a;
+            } elseif ($a > $hasta) {
+                break;
+            }
+        }
+        if (!$existeActual && $hasta === $anio - 1) {
+            $hasta = $anio;
+        }
+        return [$desde, $hasta];
     }
 
     /** Vigencia más antigua que se debe y se puede pagar (sin acuerdo), o null. */
@@ -142,18 +238,22 @@ final class Predios
      */
     public static function cotizar(int $id, ?int $desde = null, ?int $hasta = null): array
     {
-        $anio = (int) date('Y');
-        if ($desde === null) {
-            $min = self::primeraDeuda($id);
-            $desde = $min !== null ? min($min, $anio) : $anio;
+        if ($desde === null || $hasta === null) {
+            [$desde, $hasta] = self::rangoInicial($id);
         }
-        $hasta = $hasta ?? $anio;
+        if ($desde === null) {
+            // Al día y con la vigencia actual ya liquidada: nada que calcular.
+            $filas = self::estadoCuenta($id);
+            return ['ok' => true, 'filas' => $filas, 'total' => 0, 'hasta' => hoy(), 'desde' => null, 'hastaAnio' => null,
+                    'desglose' => ['impuesto' => 0, 'intereses' => 0, 'sobretasa' => 0, 'descuento' => 0, 'otros' => 0], 'rango' => []];
+        }
+        self::validarRango($id, $desde, $hasta);
 
         $pdo = Db::pdo();
         $pdo->beginTransaction();
         $ok = true;
         try {
-            self::ejecutarCalculo($id, $desde, $hasta);
+            self::calcular($id, $desde, $hasta);
         } catch (Throwable $t) {
             error_log('[psepaipa] cotizar predio ' . $id . ': ' . $t->getMessage());
             $ok = false;
@@ -210,34 +310,17 @@ final class Predios
         );
     }
 
-    private static function ejecutarCalculo(int $id, int $desde, int $hasta): void
+    /** Corre el cálculo oficial (dentro de la transacción de quien llama). */
+    public static function calcular(int $id, int $desde, int $hasta): void
     {
         $st = Db::pdo()->prepare('SET NOCOUNT ON; EXEC SP_CALCULO_PREDIAL @USUARIO_ID = ?, @ANO = ?, @ANO_FIN = ?, @PREDIO_ID = ?, @FECHA_PAGO = ?');
-        $st->execute([(int) config('usuario_sistema', 1), $desde, $hasta === $desde ? 0 : $hasta, $id, hoy() . ' 00:00:00']);
+        $st->execute([(int) config('usuario_sistema', 1), $desde, $hasta === $desde ? 0 : $hasta, $id, hoy() . 'T00:00:00']);
         // Hay que consumir todos los resultados para que SQL Server termine.
         do {
-            try {
+            if ($st->columnCount() > 0) {
                 $st->fetchAll();
-            } catch (PDOException $e) {
-                // Un resultado sin columnas no se lee.
             }
         } while ($st->nextRowset());
-    }
-
-    /**
-     * Guarda el cálculo oficial del rango (SP_CALCULO_PREDIAL con la fecha de
-     * hoy), como hace el sistema de la Alcaldía al generar una factura. Solo
-     * lo usa la factura; para mostrar cifras está cotizar(), que no guarda.
-     */
-    public static function recalcular(int $id, int $desde, int $hasta): bool
-    {
-        try {
-            self::ejecutarCalculo($id, $desde, $hasta);
-        } catch (Throwable $t) {
-            error_log('[psepaipa] SP_CALCULO_PREDIAL predio ' . $id . ': ' . $t->getMessage());
-            return false;
-        }
-        return true;
     }
 
     /**
@@ -310,7 +393,7 @@ final class Predios
     public static function enmascararNombre(string $nombre): string
     {
         $nombre = trim($nombre);
-        $visible = mb_substr($nombre, 0, min(7, max(3, (int) floor(mb_strlen($nombre) / 3))));
+        $visible = mb_substr($nombre, 0, min(4, max(2, (int) floor(mb_strlen($nombre) / 4))));
         return $visible . str_repeat('*', max(4, min(20, mb_strlen($nombre) - mb_strlen($visible))));
     }
 

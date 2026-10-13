@@ -1,5 +1,5 @@
-/* Comportamientos del portal, sin dependencias: contraseña,
-   menús, pestañas y la selección de vigencias con el valor exacto en vivo. */
+/* Comportamientos del portal, sin dependencias: contraseña, menús, pestañas,
+   filtro de predios y la selección de vigencias con el valor exacto en vivo. */
 (function () {
     'use strict';
 
@@ -23,6 +23,24 @@
             if (b) { b.disabled = true; b.classList.add('ocupado'); b.setAttribute('aria-busy', 'true'); }
         });
     });
+
+    // Página de error de un PDF (abierta en pestaña nueva).
+    $$('[data-cerrar-pestana]').forEach(function (b) {
+        b.addEventListener('click', function () { window.close(); });
+    });
+
+    // ---------- Aviso efímero (el contenedor existe desde el inicio para
+    // que los lectores de pantalla lean el primer mensaje) ----------
+    var toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.setAttribute('role', 'status');
+    document.body.appendChild(toast);
+    function avisar(texto) {
+        toast.textContent = texto;
+        toast.classList.add('visible');
+        clearTimeout(toast._espera);
+        toast._espera = setTimeout(function () { toast.classList.remove('visible'); }, 6000);
+    }
 
     // ---------- Menús desplegables (Imprimir / Pagar) ----------
     function cerrarMenus(excepto) {
@@ -56,6 +74,13 @@
             if (ev.key === 'ArrowUp') { ev.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
             if (ev.key === 'Escape') { lista.hidden = true; boton.setAttribute('aria-expanded', 'false'); boton.focus(); }
         });
+        // Salir del menú con Tab lo cierra.
+        m.addEventListener('focusout', function (ev) {
+            if (!ev.relatedTarget || !m.contains(ev.relatedTarget)) {
+                lista.hidden = true;
+                boton.setAttribute('aria-expanded', 'false');
+            }
+        });
         $$('[role="menuitem"]', lista).forEach(function (it) {
             it.addEventListener('click', function () { setTimeout(function () { cerrarMenus(); }, 0); });
         });
@@ -63,7 +88,7 @@
     document.addEventListener('click', function () { cerrarMenus(); });
     document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') { cerrarMenus(); } });
 
-    // ---------- Pestañas accesibles (flechas izquierda/derecha) ----------
+    // ---------- Pestañas accesibles (flechas, Inicio y Fin) ----------
     $$('[data-pestanas]').forEach(function (caja) {
         var botones = $$('[role="tab"]', caja);
         function activar(b, enfocar) {
@@ -78,26 +103,15 @@
         botones.forEach(function (b, i) {
             b.addEventListener('click', function () { activar(b, true); });
             b.addEventListener('keydown', function (ev) {
-                if (ev.key === 'ArrowRight') { activar(botones[(i + 1) % botones.length], true); }
-                if (ev.key === 'ArrowLeft') { activar(botones[(i - 1 + botones.length) % botones.length], true); }
+                var destino = null;
+                if (ev.key === 'ArrowRight') { destino = botones[(i + 1) % botones.length]; }
+                if (ev.key === 'ArrowLeft') { destino = botones[(i - 1 + botones.length) % botones.length]; }
+                if (ev.key === 'Home') { destino = botones[0]; }
+                if (ev.key === 'End') { destino = botones[botones.length - 1]; }
+                if (destino) { ev.preventDefault(); activar(destino, true); }
             });
         });
     });
-
-    // ---------- Aviso efímero ----------
-    function avisar(texto) {
-        var t = $('.toast');
-        if (!t) {
-            t = document.createElement('div');
-            t.className = 'toast';
-            t.setAttribute('role', 'status');
-            document.body.appendChild(t);
-        }
-        t.textContent = texto;
-        t.classList.add('visible');
-        clearTimeout(t._espera);
-        t._espera = setTimeout(function () { t.classList.remove('visible'); }, 5000);
-    }
 
     // ---------- Filtro de "Mis predios" ----------
     var filtro = $('[data-filtro]');
@@ -139,8 +153,11 @@
     var todas = $('[data-todas]', tabla);
     var totales = $$('[data-total], [data-total-pie], [data-total-desglose]');
     var resumen = $('[data-resumen-seleccion]');
+    var anuncio = $('[data-anuncio]');
+    var textoVigencias = $('[data-vigencias-texto]');
     var accionesPago = $$('[data-requiere-cotizacion]', form);
-    var pedido = 0, espera = null;
+    var pedido = 0, espera = null, ultimo = null;
+    var bloque = function (f) { return f.getAttribute('data-bloque'); };
 
     form.addEventListener('submit', function (ev) {
         var accion = ev.submitter && ev.submitter.getAttribute('formaction');
@@ -152,35 +169,59 @@
     function habilitarPago(si) {
         accionesPago.forEach(function (b) { b.disabled = !si; });
     }
-    function mostrarTotal(texto, calculando) {
+    function mostrarTotal(texto, clase) {
         totales.forEach(function (n) {
             n.textContent = texto;
-            n.classList.toggle('calculando', !!calculando);
+            n.classList.toggle('calculando', clase === 'calculando');
+            n.classList.toggle('error', clase === 'error');
         });
     }
     function marcadas() {
         return filas.map(function (f, i) { return $('[data-casilla]', f).checked ? i : -1; })
                     .filter(function (i) { return i >= 0; });
     }
+    function quitarReintentar() {
+        var r = $('[data-reintentar]');
+        if (r) { r.remove(); }
+    }
+    function ofrecerReintentar() {
+        quitarReintentar();
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'boton boton-contorno boton-chico reintentar';
+        b.setAttribute('data-reintentar', '');
+        b.textContent = 'Reintentar';
+        b.addEventListener('click', function () { if (ultimo) { cotizar(ultimo[0], ultimo[1]); } });
+        var total = $('.valor-bloque-total');
+        if (total) { total.appendChild(b); }
+    }
 
     // El valor real lo da el procedimiento oficial: el descuento depende de
     // los años que se pagan juntos, así que no basta sumar las filas.
     function cotizar(desde, hasta) {
         var mio = ++pedido;
+        ultimo = [desde, hasta];
+        quitarReintentar();
         habilitarPago(false);
-        mostrarTotal('Calculando…', true);
+        mostrarTotal('Calculando…', 'calculando');
         var datos = new FormData();
         datos.append('csrf', $('[name="csrf"]', form).value);
         datos.append('id', form.getAttribute('data-predio'));
         datos.append('desde', desde);
         datos.append('hasta', hasta);
         fetch('cotizar.php', { method: 'POST', body: datos, credentials: 'same-origin' })
-            .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
+            .then(function (r) {
+                return r.json().catch(function () { return {}; }).then(function (j) { return { r: r, j: j }; });
+            })
             .then(function (x) {
                 if (mio !== pedido) { return; }
                 if (x.j.sinSesion) { location.href = './'; return; }
-                if (!x.r.ok) { throw new Error(x.j.mensaje || 'Error'); }
-                mostrarTotal(x.j.total, false);
+                if (!x.r.ok || !x.j.ok) {
+                    var e = new Error(x.j.mensaje || 'No pudimos calcular el valor. Intenta de nuevo.');
+                    e.delServidor = !!x.j.mensaje;
+                    throw e;
+                }
+                mostrarTotal(x.j.total, null);
                 var fecha = $('[data-fecha]');
                 if (fecha) { fecha.textContent = x.j.hasta; }
                 Object.keys(x.j.desglose || {}).forEach(function (k) {
@@ -200,13 +241,19 @@
                         }
                     });
                 });
+                if (x.j.calculado === false) {
+                    avisar('No pudimos calcular los intereses de hoy: las cifras son las del último cálculo. La factura se recalcula al generarla.');
+                }
+                if (anuncio) {
+                    anuncio.textContent = 'Total a pagar ' + x.j.total + ' por las vigencias ' + (desde === hasta ? desde : desde + ' a ' + hasta) + '.';
+                }
                 habilitarPago(true);
             })
             .catch(function (e) {
                 if (mio !== pedido) { return; }
-                mostrarTotal('No se pudo calcular', false);
-                avisar('No pudimos calcular el valor. Revisa tu conexión e intenta de nuevo.');
-                console.error(e);
+                mostrarTotal('No se pudo calcular', 'error');
+                avisar(e.delServidor ? e.message : 'No pudimos calcular el valor. Revisa tu conexión e intenta de nuevo.');
+                ofrecerReintentar();
             });
     }
 
@@ -220,33 +267,49 @@
         if (resumen) {
             resumen.textContent = idx.length + ' de ' + filas.length + ' vigencia' + (filas.length === 1 ? '' : 's') + ' seleccionada' + (idx.length === 1 ? '' : 's');
         }
-        var rango = $('[data-rango]');
         if (!idx.length) {
             pedido++;
             clearTimeout(espera);
+            quitarReintentar();
             habilitarPago(false);
-            mostrarTotal('$ 0', false);
-            if (rango) { rango.textContent = 'ninguna'; }
+            mostrarTotal('$ 0', null);
+            $$('[data-desglose]').forEach(function (dd) { dd.textContent = '$ 0'; });
+            if (textoVigencias) { textoVigencias.textContent = 'Marca al menos una vigencia para ver el valor a pagar.'; }
             return;
         }
         var desde = filas[idx[0]].getAttribute('data-anio');
         var hasta = filas[idx[idx.length - 1]].getAttribute('data-anio');
         $('[data-desde]', form).value = desde;
         $('[data-hasta]', form).value = hasta;
-        if (rango) { rango.textContent = desde === hasta ? desde : desde + ' – ' + hasta; }
-        var plural = $('[data-plural]');
-        if (plural) { plural.hidden = desde === hasta; }
+        if (textoVigencias) {
+            textoVigencias.innerHTML = '';
+            textoVigencias.appendChild(document.createTextNode(desde === hasta ? 'Pagar vigencia ' : 'Pagar vigencias '));
+            var fuerte = document.createElement('strong');
+            fuerte.textContent = desde === hasta ? desde : desde + ' – ' + hasta;
+            textoVigencias.appendChild(fuerte);
+        }
         if (!sinCotizar) {
             clearTimeout(espera);
             habilitarPago(false);
-            mostrarTotal('Calculando…', true);
+            mostrarTotal('Calculando…', 'calculando');
             espera = setTimeout(function () { cotizar(desde, hasta); }, 350);
         }
     }
 
+    // Se pagan años seguidos y dentro de un mismo bloque (sin saltar años que
+    // no están pendientes).
     filas.forEach(function (f, i) {
         $('[data-casilla]', f).addEventListener('change', function (ev) {
             var idx = marcadas();
+            if (ev.target.checked) {
+                var otro = idx.some(function (j) { return bloque(filas[j]) !== bloque(f); });
+                if (otro) {
+                    // Otro bloque: se paga en una factura aparte.
+                    filas.forEach(function (g, j) { $('[data-casilla]', g).checked = bloque(g) === bloque(f) && j <= i; });
+                    avisar('Las vigencias que no son seguidas se pagan en facturas separadas.');
+                    idx = marcadas();
+                }
+            }
             if (idx.length) {
                 var a = Math.min.apply(null, idx), b = Math.max.apply(null, idx);
                 if (!ev.target.checked && i > a && i < b) {

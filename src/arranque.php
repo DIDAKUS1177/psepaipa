@@ -39,7 +39,13 @@ error_reporting(E_ALL);
 
 date_default_timezone_set($GLOBALS['CONFIG']['zona_horaria'] ?? 'America/Bogota');
 
+/** Mensaje pensado para el contribuyente (los demás errores van al log). */
+class AvisoUsuario extends RuntimeException
+{
+}
+
 require_once __DIR__ . '/Db.php';
+require_once __DIR__ . '/Limites.php';
 require_once __DIR__ . '/Cuentas.php';
 require_once __DIR__ . '/Predios.php';
 require_once __DIR__ . '/Factura.php';
@@ -55,7 +61,14 @@ session_set_cookie_params([
     'httponly' => true,
     'samesite' => 'Lax',
 ]);
+ini_set('session.use_strict_mode', '1');
 session_start();
+// Las páginas muestran datos de predios: que el navegador no las guarde
+// (equipos compartidos, café internet).
+if (PHP_SAPI !== 'cli') {
+    header('Cache-Control: no-store, max-age=0');
+    header_remove('X-Powered-By');
+}
 
 // La sesión vence tras 30 minutos sin actividad.
 const MINUTOS_SESION = 30;

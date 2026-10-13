@@ -4,24 +4,29 @@
  * anterior (Angular + .NET), para que nadie tenga que volver a inscribirse.
  *
  * La contraseña se guarda como el sistema anterior: MD5 sin sal, en
- * hexadecimal MAYÚSCULA (así están las 200 de Guateque). Es débil, pero
- * cambiar el formato dejaría sin entrar a quien siga usando el sistema
- * anterior mientras conviven; queda anotado como pendiente.
+ * hexadecimal minúscula (así están casi todas; se compara sin importar
+ * mayúsculas). Es débil, pero cambiar el formato dejaría sin entrar a quien
+ * siga usando el sistema anterior mientras conviven; queda pendiente.
+ *
+ * Los intentos fallidos se cuentan por documento y por IP (Limites), no en la
+ * sesión: abrir otra sesión no reinicia el contador.
  */
 
 declare(strict_types=1);
 
 final class Cuentas
 {
-    const INTENTOS_MAXIMOS = 5;
-    const MINUTOS_BLOQUEO  = 5;
+    const INTENTOS_MAXIMOS   = 5;   // por documento, en la ventana
+    const MINUTOS_BLOQUEO    = 15;
+    const INTENTOS_IP_HORA   = 30;  // por IP
+    const INSCRIPCIONES_IP   = 5;   // por IP y por hora
 
     /** Tipos de documento de la tabla tipos_identificacion. */
     const TIPOS = [1 => 'Cédula de ciudadanía', 2 => 'Tarjeta de identidad', 3 => 'Pasaporte', 4 => 'Cédula de extranjería'];
 
     public static function huella(string $clave): string
     {
-        return strtoupper(md5($clave));
+        return md5($clave);
     }
 
     /** Documento tal como se guarda: sin puntos, espacios ni guiones. */
@@ -35,50 +40,52 @@ final class Cuentas
      */
     public static function entrar(string $documento, string $clave): ?string
     {
-        $bloqueo = (int) ($_SESSION['bloqueo_hasta'] ?? 0);
-        if ($bloqueo > time()) {
-            $min = (int) ceil(($bloqueo - time()) / 60);
-            return "Demasiados intentos fallidos. Espera $min minuto" . ($min === 1 ? '' : 's') . ' e intenta de nuevo.';
-        }
-
         $doc = self::normalizarDocumento($documento);
         if ($doc === '' || $clave === '') {
             return 'Escribe tu número de documento y tu contraseña.';
         }
+        $claveDoc = 'login_doc_' . $doc;
+        $claveIp = 'login_ip_' . Limites::ip();
+        if (Limites::excedido($claveDoc, self::INTENTOS_MAXIMOS, self::MINUTOS_BLOQUEO * 60)
+            || Limites::excedido($claveIp, self::INTENTOS_IP_HORA, 3600)) {
+            return 'Demasiados intentos fallidos. Espera ' . self::MINUTOS_BLOQUEO . ' minutos e intenta de nuevo.';
+        }
 
-        $u = Db::fila(
-            'SELECT TOP 1 id, documento, id_tipo_identificacion, nombres, apellidos, correo_electronico, telefono, password, estado
-               FROM usuarios_pse WHERE documento = ? ORDER BY id',
+        // El documento se compara limpio en los dos lados: hay cuentas viejas
+        // guardadas con puntos o guiones, y alguno repetido.
+        $candidatas = Db::filas(
+            "SELECT id, documento, id_tipo_identificacion, nombres, apellidos, correo_electronico, telefono, password, estado
+               FROM usuarios_pse
+              WHERE REPLACE(REPLACE(REPLACE(REPLACE(UPPER(documento), '.', ''), '-', ''), ' ', ''), '|', '') = ?
+              ORDER BY id",
             [$doc]
         );
-
-        $ok = $u !== null
-            && strtoupper(trim((string) $u['estado'])) === 'A'
-            && hash_equals(strtoupper((string) $u['password']), self::huella($clave));
-
-        if (!$ok) {
-            $_SESSION['intentos'] = (int) ($_SESSION['intentos'] ?? 0) + 1;
-            if ($_SESSION['intentos'] >= self::INTENTOS_MAXIMOS) {
-                $_SESSION['bloqueo_hasta'] = time() + self::MINUTOS_BLOQUEO * 60;
-                $_SESSION['intentos'] = 0;
+        $u = null;
+        foreach ($candidatas as $c) {
+            if (strtoupper(trim((string) $c['estado'])) === 'A'
+                && hash_equals(strtolower(trim((string) $c['password'])), self::huella($clave))) {
+                $u = $c;
+                break;
             }
-            if ($u !== null && strtoupper(trim((string) $u['estado'])) !== 'A') {
-                return 'Esta cuenta está inactiva. Comunícate con la Dirección de Impuestos.';
-            }
-            return 'El documento o la contraseña no coinciden.';
+        }
+        if ($u === null) {
+            Limites::anotar($claveDoc);
+            Limites::anotar($claveIp);
+            return 'No pudimos iniciar sesión con esos datos. Revisa el documento y la contraseña; si el problema sigue, comunícate con la Dirección de Impuestos.';
         }
 
         session_regenerate_id(true);
-        unset($_SESSION['intentos'], $_SESSION['bloqueo_hasta']);
+        Limites::borrar($claveDoc);
         $_SESSION['usuario'] = [
             'id'        => (int) $u['id'],
-            'documento' => (string) $u['documento'],
+            'documento' => $doc,
             'tipo'      => (int) $u['id_tipo_identificacion'],
             'nombres'   => trim((string) $u['nombres']),
             'apellidos' => trim((string) $u['apellidos']),
             'correo'    => trim((string) $u['correo_electronico']),
             'telefono'  => trim((string) $u['telefono']),
         ];
+        $_SESSION['predios_ok'] = [];
         return null;
     }
 
@@ -140,16 +147,22 @@ final class Cuentas
         if ($err) {
             return $err;
         }
+        if (Limites::excedido('inscripcion_ip_' . Limites::ip(), self::INSCRIPCIONES_IP, 3600)) {
+            return ['general' => 'Se crearon varias cuentas desde esta conexión en la última hora. Intenta más tarde.'];
+        }
 
         $pdo = Db::pdo();
         $pdo->beginTransaction();
         try {
             // Dos inscripciones simultáneas con el mismo documento: entra una.
             Db::candado('psepaipa_inscripcion');
-            $existe = Db::valor('SELECT COUNT(*) FROM usuarios_pse WHERE documento = ?', [$doc]);
+            $existe = Db::valor(
+                "SELECT COUNT(*) FROM usuarios_pse WHERE REPLACE(REPLACE(REPLACE(REPLACE(UPPER(documento), '.', ''), '-', ''), ' ', ''), '|', '') = ?",
+                [$doc]
+            );
             if ((int) $existe > 0) {
                 $pdo->rollBack();
-                return ['documento' => 'Ya existe una cuenta con este documento. Inicia sesión o recupera tu contraseña.'];
+                return ['documento' => 'Ya existe una cuenta con este documento. Inicia sesión; si no recuerdas la contraseña, comunícate con la Dirección de Impuestos.'];
             }
             Db::ejecutar(
                 "INSERT INTO usuarios_pse (documento, id_tipo_identificacion, nombres, apellidos, fecha_nacimiento,
@@ -159,6 +172,7 @@ final class Cuentas
                  $correo, $direccion, $telefono, self::huella($clave)]
             );
             $pdo->commit();
+            Limites::anotar('inscripcion_ip_' . Limites::ip());
         } catch (Throwable $t) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();

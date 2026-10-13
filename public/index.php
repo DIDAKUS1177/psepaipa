@@ -56,12 +56,18 @@ function campoError(array $errores, string $campo): string
 {
     return isset($errores[$campo]) ? '<p class="campo-error" id="e-' . e($campo) . '">' . e($errores[$campo]) . '</p>' : '';
 }
+/** El primer campo con error recibe el foco (para no buscarlo a ciegas). */
+$GLOBALS['__foco'] = false;
 function attrError(array $errores, string $campo): string
 {
+    if (isset($errores[$campo]) && !$GLOBALS['__foco']) {
+        $GLOBALS['__foco'] = true;
+        return ' aria-invalid="true" aria-describedby="e-' . e($campo) . '" autofocus';
+    }
     return isset($errores[$campo]) ? ' aria-invalid="true" aria-describedby="e-' . e($campo) . '"' : '';
 }
 
-Vista::abrir($vista === 'entrar' ? 'Iniciar sesión' : 'Inscribirse', null, 'pagina-entrada', 'entrada');
+Vista::abrir($vista === 'entrar' ? 'Iniciar sesión' : 'Registrarse', null, 'pagina-entrada', 'entrada');
 $ciudad = (string) config('municipio.ciudad');
 ?>
 <section class="entrada">
@@ -79,10 +85,10 @@ $ciudad = (string) config('municipio.ciudad');
         </div>
 
         <div class="tarjeta-acceso">
-            <div class="pestanas" role="tablist">
-                <a role="tab" href="./" class="<?= $vista === 'entrar' ? 'activa' : '' ?>" aria-selected="<?= $vista === 'entrar' ? 'true' : 'false' ?>">Iniciar sesión</a>
-                <a role="tab" href="./?v=inscribirse" class="<?= $vista === 'inscribirse' ? 'activa' : '' ?>" aria-selected="<?= $vista === 'inscribirse' ? 'true' : 'false' ?>">Inscribirme</a>
-            </div>
+            <nav class="pestanas" aria-label="Acceso">
+                <a href="./" class="<?= $vista === 'entrar' ? 'activa' : '' ?>" <?= $vista === 'entrar' ? 'aria-current="page"' : '' ?>>Iniciar sesión</a>
+                <a href="./?v=inscribirse" class="<?= $vista === 'inscribirse' ? 'activa' : '' ?>" <?= $vista === 'inscribirse' ? 'aria-current="page"' : '' ?>>Registrarse</a>
+            </nav>
 
             <?php if ($vista === 'entrar'): ?>
             <form method="post" class="formulario" novalidate data-ocupado>
@@ -93,7 +99,7 @@ $ciudad = (string) config('municipio.ciudad');
                 <?php if ($error): ?><div class="aviso aviso-error" role="alert"><?= Vista::icono('alerta') ?><span><?= e($error) ?></span></div><?php endif; ?>
                 <label class="campo">
                     <span>Número de documento</span>
-                    <input name="documento" inputmode="numeric" autocomplete="username" required maxlength="20" value="<?= e($datos['documento'] ?? '') ?>" autofocus>
+                    <input name="documento" inputmode="numeric" autocomplete="username" required maxlength="13" value="<?= e($datos['documento'] ?? '') ?>" autofocus>
                 </label>
                 <label class="campo">
                     <span>Contraseña</span>
@@ -132,7 +138,7 @@ $ciudad = (string) config('municipio.ciudad');
                     </label>
                     <label class="campo">
                         <span>Número de documento</span>
-                        <input name="documento" required maxlength="20" value="<?= e($datos['documento'] ?? '') ?>"<?= attrError($errores, 'documento') ?>>
+                        <input name="documento" required maxlength="13" inputmode="numeric" autocomplete="off" value="<?= e($datos['documento'] ?? '') ?>"<?= attrError($errores, 'documento') ?>>
                         <?= campoError($errores, 'documento') ?>
                     </label>
                     <label class="campo">

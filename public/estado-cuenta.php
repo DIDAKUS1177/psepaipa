@@ -20,31 +20,28 @@ $hasta = (int) ($_POST['hasta'] ?? 0);
 $anio = (int) date('Y');
 
 try {
-    $p = Predios::detalle($id);
-    if ($p === null || $desde < 1990 || $hasta > $anio || $desde > $hasta) {
-        throw new RuntimeException('No pudimos preparar el estado de cuenta de esas vigencias.');
+    $p = Predios::permitido($id, $u['documento']) ? Predios::detalle($id) : null;
+    if ($p === null || $desde < 1900 || $hasta > $anio || $desde > $hasta) {
+        throw new AvisoUsuario('No pudimos preparar el estado de cuenta de esas vigencias.');
     }
     $c = Predios::cotizar($id, $desde, $hasta);
     if (!$c['rango']) {
-        throw new RuntimeException('Las vigencias elegidas ya no están pendientes de pago.');
+        throw new AvisoUsuario('Las vigencias elegidas ya no están pendientes de pago.');
     }
-} catch (RuntimeException $e) {
-    aviso($e->getMessage(), 'error');
-    redirigir('predio.php?id=' . $id);
+} catch (AvisoUsuario $e) {
+    PdfPredial::error($e->getMessage(), $id);
 } catch (Throwable $t) {
     error_log('[psepaipa] estado de cuenta ' . $id . ': ' . $t->getMessage());
-    aviso('No pudimos preparar el estado de cuenta. Intenta de nuevo en unos minutos.', 'error');
-    redirigir('predio.php?id=' . $id);
+    PdfPredial::error('No pudimos preparar el estado de cuenta. Intenta de nuevo en unos minutos.', $id);
 }
 
-$propio = Predios::esPropietario($id, $u['documento']);
 $pdf = PdfPredial::crear('Estado de cuenta predial ' . $p['codigo_predio']);
 PdfPredial::encabezado($pdf, ['ESTADO DE CUENTA', date('d/m/Y'), 'Calculado al ' . date('d/m/Y h:i a'), 'Documento informativo'], [79, 98, 93]);
 $pdf->SetFont('helvetica', '', 8);
 $pdf->MultiCell(PdfPredial::ANCHO, 3.6,
     'Valores del Impuesto Predial Unificado de las vigencias ' . $desde . ($hasta !== $desde ? ' a ' . $hasta : '')
     . ', con los intereses y descuentos calculados a la fecha. Este documento NO sirve para pagar: para pagar, genere la factura con código de barras en el portal.', 0, 'J');
-PdfPredial::predio($pdf, $p, $propio);
+PdfPredial::predio($pdf, $p);
 PdfPredial::vigencias($pdf, $c['rango']);
 
 $pdf->SetY($pdf->GetY() + 5);

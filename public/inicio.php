@@ -42,6 +42,12 @@ try {
     $errorDatos = 'No pudimos cargar tus predios en este momento. Intenta de nuevo en unos minutos.';
 }
 $idsMios = array_map(fn($p) => (int) $p['id'], $mios);
+foreach ($idsMios as $idPropio) {
+    Predios::permitir($idPropio);
+}
+foreach ($resultados ?? [] as $r) {
+    Predios::permitir((int) $r['id']);
+}
 
 $conDeuda = array_values(array_filter($mios, fn($p) => (int) $p['vigencias_debe'] > 0));
 $totalDeuda = array_sum(array_map(fn($p) => (float) $p['total_debe'], $conDeuda));
@@ -69,7 +75,7 @@ function tarjetaPredio(array $p, bool $ajeno): void
             </div>
             <div class="fp-deuda">
                 <?php if ($debe > 0): ?>
-                    <p class="etiqueta">Debe <?= $debe ?> vigencia<?= $debe === 1 ? '' : 's' ?><?= $p['debe_desde'] ? ' · desde ' . (int) $p['debe_desde'] : '' ?></p>
+                    <p class="etiqueta"><?= $debe === 1 ? 'Debe la vigencia ' . (int) $p['debe_desde'] : 'Debe ' . $debe . ' vigencias · desde ' . (int) $p['debe_desde'] ?></p>
                     <p class="monto"><?= pesos($p['total_debe']) ?></p>
                 <?php else: ?>
                     <p class="etiqueta">Último año pagado</p>
@@ -85,6 +91,7 @@ function tarjetaPredio(array $p, bool $ajeno): void
 Vista::abrir($vista === 'otros' ? 'Otros predios' : 'Mis predios', ['titulo' => 'Impuesto Predial Unificado', 'volver' => null], '', $vista === 'otros' ? 'otro' : 'predios');
 ?>
 <div class="contenedor pagina">
+    <?php if ($vista === 'mios'): ?>
     <section class="saludo">
         <div class="saludo-texto">
             <p class="ceja ceja-oscura">Hola, <?= e(mb_convert_case(mb_strtolower($u['nombres']), MB_CASE_TITLE)) ?></p>
@@ -108,6 +115,7 @@ Vista::abrir($vista === 'otros' ? 'Otros predios' : 'Mis predios', ['titulo' => 
         </dl>
         <?php endif; ?>
     </section>
+    <?php endif; ?>
 
     <section class="tarjeta pestanas-inicio">
         <nav class="pestanas pestanas-linea" aria-label="Predios">

@@ -67,7 +67,7 @@ final class Db
             $f = $st->fetch();
             if ($f !== false && isset($f['r'])) {
                 if ((int) $f['r'] < 0) {
-                    throw new RuntimeException('El sistema está ocupado. Intenta de nuevo en un momento.');
+                    throw new AvisoUsuario('El sistema está ocupado. Intenta de nuevo en un momento.');
                 }
                 return;
             }

@@ -127,7 +127,7 @@ final class Vista
                     </span>
                     <form method="post" action="salir.php">
                         <input type="hidden" name="csrf" value="<?= e(tokenCsrf()) ?>">
-                        <button class="boton-salir" type="submit"><?= self::icono('salir') ?><span>Salir</span></button>
+                        <button class="boton-salir" type="submit" aria-label="Salir"><?= self::icono('salir') ?><span>Salir</span></button>
                     </form>
                 </div>
             <?php else: ?>
@@ -138,7 +138,7 @@ final class Vista
     </div>
     <nav class="menu" aria-label="Menú principal">
         <div class="contenedor menu-fila">
-            <a href="<?= e(config('municipio.portal')) ?>"><?= self::icono('casa') ?>Inicio</a>
+            <a href="<?= e(config('municipio.portal')) ?>"><?= self::icono('casa') ?>Portal Tributario</a>
             <?php if ($u): ?>
                 <a href="inicio.php" class="<?= $seccion === 'predios' ? 'activo' : '' ?>" <?= $seccion === 'predios' ? 'aria-current="page"' : '' ?>><?= self::icono('predio') ?>Mis predios</a>
                 <a href="inicio.php?vista=otros" class="<?= $seccion === 'otro' ? 'activo' : '' ?>" <?= $seccion === 'otro' ? 'aria-current="page"' : '' ?>><?= self::icono('buscar') ?>Otros predios</a>

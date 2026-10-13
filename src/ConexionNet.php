@@ -125,14 +125,41 @@ final class ConexionNet
     /** "Server=x;Database=y;User Id=z;Password=w;..." → partes. */
     public static function interpretar(string $cadena): ?array
     {
+        // Partes separadas por ';' fuera de comillas: un valor puede venir
+        // entre comillas y llevar ';' dentro (Password="a;b").
         $partes = [];
-        foreach (explode(';', $cadena) as $par) {
-            $pos = strpos($par, '=');
-            if ($pos === false) {
+        $trozo = '';
+        $comilla = '';
+        $n = strlen($cadena);
+        for ($i = 0; $i <= $n; $i++) {
+            $c = $i < $n ? $cadena[$i] : ';';
+            if ($comilla !== '') {
+                if ($c === $comilla) {
+                    if ($i + 1 < $n && $cadena[$i + 1] === $comilla) {
+                        $trozo .= $c;
+                        $i++;
+                    } else {
+                        $comilla = '';
+                    }
+                } else {
+                    $trozo .= $c;
+                }
                 continue;
             }
-            $clave = strtolower(preg_replace('/\s+/', '', substr($par, 0, $pos)) ?? '');
-            $partes[$clave] = trim(substr($par, $pos + 1));
+            if (($c === '"' || $c === "'") && trim(substr($trozo, (int) strpos($trozo, '=') + 1)) === '' && strpos($trozo, '=') !== false) {
+                $comilla = $c;
+                continue;
+            }
+            if ($c === ';') {
+                $pos = strpos($trozo, '=');
+                if ($pos !== false) {
+                    $clave = strtolower(preg_replace('/\s+/', '', substr($trozo, 0, $pos)) ?? '');
+                    $partes[$clave] = trim(substr($trozo, $pos + 1));
+                }
+                $trozo = '';
+                continue;
+            }
+            $trozo .= $c;
         }
         $tomar = function (array $nombres) use ($partes): string {
             foreach ($nombres as $n) {
@@ -144,7 +171,10 @@ final class ConexionNet
         };
         $servidor = $tomar(['server', 'datasource', 'address', 'addr', 'networkaddress']);
         $base = $tomar(['database', 'initialcatalog']);
-        if ($servidor === '' || $base === '') {
+        $usuario = $tomar(['userid', 'uid', 'user', 'username']);
+        // Sin usuario (seguridad integrada de Windows) PHP no puede entrar igual:
+        // mejor no reemplazar la conexión del config.
+        if ($servidor === '' || $base === '' || $usuario === '') {
             return null;
         }
         $servidor = preg_replace('/^tcp:/i', '', $servidor) ?? $servidor;
@@ -154,7 +184,7 @@ final class ConexionNet
         return [
             'servidor' => $servidor,
             'base'     => $base,
-            'usuario'  => $tomar(['userid', 'uid', 'user', 'username']),
+            'usuario'  => $usuario,
             'clave'    => $tomar(['password', 'pwd']),
         ];
     }

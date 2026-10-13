@@ -18,7 +18,14 @@ final class PdfPredial
     public static function crear(string $titulo): TCPDF
     {
         require_once RAIZ . '/lib/tcpdf/tcpdf.php';
-        $pdf = new TCPDF('P', 'mm', 'LETTER', true, 'UTF-8', false);
+        // Subclase solo para quitar el enlace "Powered by TCPDF" del final.
+        $pdf = new class('P', 'mm', 'LETTER', true, 'UTF-8', false) extends TCPDF {
+            public function __construct(...$a)
+            {
+                parent::__construct(...$a);
+                $this->tcpdflink = false;
+            }
+        };
         $pdf->SetCreator('ERPSOFT');
         $pdf->SetAuthor('Alcaldía de ' . config('municipio.ciudad'));
         $pdf->SetTitle($titulo);
@@ -66,15 +73,14 @@ final class PdfPredial
         $pdf->SetXY(12, 38);
     }
 
-    /** Datos del predio; oculta propietarios si quien lo pide no es dueño. */
-    public static function predio(TCPDF $pdf, array $p, bool $propio): void
+    /**
+     * Datos del predio. Los propietarios van ocultos siempre: la cuenta no
+     * prueba que quien se inscribió con un documento sea el dueño.
+     */
+    public static function predio(TCPDF $pdf, array $p): void
     {
-        $nombres = array_map(fn($x) => (string) $x['nombre'], $p['propietarios']);
-        $documentos = array_map(fn($x) => (string) $x['identificacion'], $p['propietarios']);
-        if (!$propio) {
-            $nombres = array_map([Predios::class, 'enmascararNombre'], $nombres);
-            $documentos = array_map([Predios::class, 'enmascararDocumento'], $documentos);
-        }
+        $nombres = array_map(fn($x) => Predios::enmascararNombre((string) $x['nombre']), $p['propietarios']);
+        $documentos = array_map(fn($x) => Predios::enmascararDocumento((string) $x['identificacion']), $p['propietarios']);
         $h = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
         $fila = function ($a, $b, $c, $d) use ($h) {
             return '<tr><td width="18%" style="background-color:#e8f4f2;"><b>' . $a . '</b></td><td width="32%">' . $h($b) . '</td>'
@@ -133,6 +139,29 @@ final class PdfPredial
         $pdf->SetY($pdf->GetY() + 3);
         $pdf->writeHTML($t, false, false, true, false, '');
         return $sum[6];
+    }
+
+    /**
+     * Error al generar un PDF: la petición viene a una pestaña nueva, así que
+     * se responde ahí mismo (redirigir dejaría una segunda copia del predio).
+     */
+    public static function error(string $mensaje, int $idPredio): void
+    {
+        http_response_code(200);
+        Vista::abrir('No se pudo generar', ['titulo' => 'Impuesto Predial Unificado', 'volver' => null]);
+        ?>
+        <div class="contenedor pagina">
+            <div class="vacio">
+                <?= Vista::icono('alerta') ?>
+                <h3>No se pudo generar el documento</h3>
+                <p><?= e($mensaje) ?></p>
+                <p><button type="button" class="boton boton-primario" data-cerrar-pestana>Cerrar esta pestaña</button>
+                   <a class="boton boton-contorno" href="predio.php?id=<?= (int) $idPredio ?>">Volver al predio</a></p>
+            </div>
+        </div>
+        <?php
+        Vista::cerrar();
+        exit;
     }
 
     public static function pesos($v): string
