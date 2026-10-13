@@ -35,6 +35,11 @@ try {
 echo 'PHP ' . PHP_VERSION . PHP_EOL;
 paso('Extensión pdo_sqlsrv', extension_loaded('pdo_sqlsrv'));
 $fuente = config('db_appsettings') ? 'appsettings.json de la API anterior' : 'config.local.php';
+if (config('db_appsettings')) {
+    require_once __DIR__ . '/../src/ConexionNet.php';
+    $leida = ConexionNet::leer((string) config('db_appsettings'), config('db_appsettings_nombre'));
+    paso('Lee la conexión del appsettings.json', $leida !== null, ConexionNet::diagnostico((string) config('db_appsettings')));
+}
 paso('Conexión configurada (' . $fuente . ')', (string) config('db.base') !== '' && (string) config('db.usuario') !== '', 'base ' . config('db.base') . ' en ' . config('db.servidor'));
 
 try {
