@@ -50,7 +50,6 @@ foreach ($resultados ?? [] as $r) {
 }
 
 $conDeuda = array_values(array_filter($mios, fn($p) => (int) $p['vigencias_debe'] > 0));
-$totalDeuda = array_sum(array_map(fn($p) => (float) $p['total_debe'], $conDeuda));
 
 /** Tarjeta de un predio (la misma para los propios y los de otros). */
 function tarjetaPredio(array $p, bool $ajeno): void
@@ -76,7 +75,10 @@ function tarjetaPredio(array $p, bool $ajeno): void
             <div class="fp-deuda">
                 <?php if ($debe > 0): ?>
                     <p class="etiqueta"><?= $debe === 1 ? 'Debe la vigencia ' . (int) $p['debe_desde'] : 'Debe ' . $debe . ' vigencias · desde ' . (int) $p['debe_desde'] ?></p>
-                    <p class="monto"><?= pesos($p['total_debe']) ?></p>
+                    <?php // El valor no se muestra en el listado (pedido del cliente,
+                          // 2026-10-13): el que vale es el que se calcula con la
+                          // fecha de hoy al entrar al predio. ?>
+                    <p class="monto monto-oculto" aria-label="Valor oculto: entra al predio para verlo">$ ******</p>
                 <?php else: ?>
                     <p class="etiqueta">Último año pagado</p>
                     <p class="monto"><?= e($p['ultimo_anio_pago'] ?: '—') ?></p>
@@ -107,10 +109,6 @@ Vista::abrir($vista === 'otros' ? 'Otros predios' : 'Mis predios', ['titulo' => 
             <div class="resumen-item <?= $conDeuda ? 'resumen-alerta' : 'resumen-ok' ?>">
                 <dt>Con saldo pendiente</dt>
                 <dd><?= count($conDeuda) ?></dd>
-            </div>
-            <div class="resumen-item resumen-total">
-                <dt>Total pendiente <span class="resumen-nota">(último cálculo)</span></dt>
-                <dd><?= pesos($totalDeuda) ?></dd>
             </div>
         </dl>
         <?php endif; ?>

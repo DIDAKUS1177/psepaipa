@@ -66,7 +66,7 @@ final class Factura
             Predios::validarRango($idPredio, $desde, $hasta, true);
 
             // 2. Cálculo oficial, dentro de la transacción.
-            Predios::calcular($idPredio, $desde, $hasta);
+            Predios::calcularHoy($idPredio, $desde, $hasta);
 
             // 3. Leer lo calculado.
             $filas = Db::filas(

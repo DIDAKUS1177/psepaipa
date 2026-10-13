@@ -66,6 +66,25 @@ return [
     //     'politica_datos'  => '',   // URL de la política de tratamiento de datos
     // ],
 
+    // MISMA CUENTA QUE ICA (lo pidió el cliente): ruta del config.municipio.php
+    // del módulo de ICA en el servidor. Las credenciales se leen de ahí (de la
+    // tabla conf_parametros de ICA o de sus constantes PLACETOPAY_*), sin
+    // copiarlas. Lo que se ponga en 'avalpay' arriba tiene prioridad; 'activo'
+    // y 'usuarios_prueba' siguen saliendo de 'avalpay'. Con la cuenta de ICA los
+    // avisos de AvalPay van a la URL de ICA: aquí el pago se confirma al volver
+    // del banco y con la tarea herramientas/verificar-pagos.php.
+    // 'avalpay_ica' => '',
+
+    // Paz y salvo (formato del sistema oficial de Paipa, pazPDF_pai).
+    'paz_salvo' => [
+        'dependencia'    => 'Tesorería Municipal',
+        'cargo'          => 'SECRETARIO(A) DE HACIENDA MUNICIPAL',
+        'firma'          => '',   // ruta de la imagen de la firma (opcional)
+        'valor'          => 0,    // costo del certificado; 0 = no se imprime
+        'nota'           => 'Actualmente el municipio de Paipa no tiene adoptada la contribución de valorización para predios ubicados dentro de su jurisdicción.',
+        'url_validacion' => '',   // vacío = validar.php de este portal (+ token)
+    ],
+
     // Zona horaria de las fechas que ve el contribuyente.
     'zona_horaria' => 'America/Bogota',
 

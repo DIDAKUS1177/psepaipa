@@ -19,8 +19,11 @@ public/        raíz web (en Plesk el docroot debe apuntar aquí)
   cotizar.php  JSON: valor exacto de un rango de vigencias (sin guardar)
   factura.php  PDF de la liquidación oficial con código de barras GS1-128
   estado-cuenta.php  PDF informativo de las vigencias elegidas (no guarda nada)
+  paz-y-salvo.php    PDF del certificado de paz y salvo (consecutivo oficial + QR)
+  validar.php  verificación pública del QR del paz y salvo
 src/           Db, Cuentas, Predios, Factura, PdfPredial, Vista, AvalPay, PagoLinea, arranque
-herramientas/  verificar.php (comprobación en el servidor), verificar-pagos.php (tarea)
+herramientas/  verificar.php (comprobación en el servidor), verificar-pagos.php (tarea),
+               probar-sp.php <id> (compara el cálculo oficial sin guardar)
 lib/tcpdf      TCPDF recortado (las fuentes básicas)
 config/        config.example.php (sin claves)
 pruebas/datos  (gitignored) scripts y cuenta de prueba local
@@ -36,9 +39,16 @@ cada vigencia en `predios_pagos`, y lee lo que deja. Los procedimientos vienen c
 
 - **Ver un predio no escribe nada**: `Predios::cotizar` corre el procedimiento dentro de
   una transacción, lee y hace ROLLBACK. Probado: el procedimiento acepta ir anidado.
-- **El valor depende del rango elegido**: el descuento cambia según los años que se
-  pagan juntos (en la prueba, 2026 sola valía $481 y dentro de 2017–2026, $424). Por eso
-  la pantalla vuelve a cotizar cada vez que cambia la selección (`cotizar.php`).
+- **Todo se calcula con la fecha de hoy** (pedido del cliente, 2026-10-13). Probado contra
+  el procedimiento: con `@ANO_FIN` (rango de varios años) recalcula todas las vigencias
+  pendientes anteriores pero NO la del año en curso, que se quedaba con la cifra del último
+  día en que alguien la calculó (los "$424" que antes creímos un descuento por rango eran eso;
+  hoy vale $481). Con `@ANO = año en curso, @ANO_FIN = 0` (la "vista previa" del oficial) sí.
+  `Predios::calcularHoy` corre primero esa y luego el rango; la usan la cotización y la
+  factura. Al abrir el predio se recalculan TODOS los bloques (`cotizar(..., true)`) y al
+  cambiar la selección se vuelve a cotizar (`cotizar.php`). En el listado de predios NO se
+  muestra el valor (sale "$ ******"): el único que vale es el de hoy, dentro del predio.
+  Para comparar en el servidor: `herramientas/probar-sp.php <id>` (no guarda nada).
 - **La factura sí guarda**: corre el procedimiento, toma el consecutivo de
   `anios.numero_factura_actual` del año en curso (número = AAAA + 5 cifras, regla del
   `PrediosController` oficial) y escribe `factura_pago` y `fecha_emision` en cada
@@ -63,7 +73,7 @@ Encabezado con "Registrarse / Iniciar sesión" (sin la barra azul GOV.CO: a Dieg
 gustó, 2026-10-12), menú horizontal y franja
 del trámite con "Regresar". En el predio: "Información del predio" con datos clave,
 "Valor a pagar" (fecha límite, total, "¿Qué estoy pagando?", menús Imprimir y Pagar) y
-pestañas Estado financiero / Recibos emitidos / Histórico de pagos. En celular la tabla
+pestañas Estado de cuenta / Recibos emitidos / Histórico de pagos. En celular la tabla
 de vigencias se vuelve tarjetas (sin deslizar a la derecha). Diego pidió NO poner
 "paso a paso" ni preguntas frecuentes: solo lo que pidió el cliente.
 
@@ -107,12 +117,25 @@ Misma integración de ICA (`src/AvalPay.php`, de `business/class.placetopay.php`
   (puerto 9090); `config/config.local.php` apunta a `host.docker.internal:9090/api`.
   `pago.py` del scratchpad: 21/21 (aprobado, rechazado, pendiente + tarea, aviso, valor menor).
 
+## Cambios del cliente (2026-10-13)
+
+- **Colores**: el mismo verde de ICA (`#1fa49d`, oscuro `#17756f`), sin el tono casi negro.
+- **Paz y salvo** (`paz-y-salvo.php`, `src/PazYSalvo.php`): formato de `pazPDF_pai`, número
+  del consecutivo oficial `anios.consecutivo_paz`, QR en `predios_validaciones_qr` (tabla del
+  oficial: 5 consultas, válido al 31/12) verificable en `validar.php`. Solo sin deudas, con el
+  año en curso pagado y sin pago en curso; el mismo predio el mismo día repite el certificado.
+  Propietario oculto. Botón en «Valor a pagar» y en «Sin saldos pendientes».
+- La pestaña «Estado financiero» se llama **«Estado de cuenta»**.
+- **PSE con la cuenta de ICA**: `avalpay_ica` = ruta del `config.municipio.php` de ICA; se lee
+  sin ejecutarlo (constantes DB_PROD_* y PLACETOPAY_*, y `conf_parametros` PASARELA_*).
+  Con esa cuenta los avisos de AvalPay llegan a la URL de ICA: aquí confirman el retorno y la
+  tarea. Los puntos de pago de la factura ya coinciden con la liquidación oficial de Paipa.
+
 ## Pendiente
 
 - AvalPay: hecho y probado contra un simulador local (ver «Pago en línea»); falta poner las
   credenciales en el `config.local.php` del servidor, registrar la URL de aviso y la tarea.
 - Recuperar la contraseña por correo (hoy remite a la Dirección de Impuestos).
-- Paz y salvo.
 - Probar contra una copia de la base de Paipa antes de publicar (las cifras de Guateque
   traen intereses en 0).
 

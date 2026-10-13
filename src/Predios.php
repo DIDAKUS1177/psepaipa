@@ -174,7 +174,7 @@ final class Predios
                 if ($a === $anio && $a === $hasta) {
                     continue;
                 }
-                throw new AvisoUsuario('La vigencia ' . $a . ' no está liquidada para este predio. Elige años seguidos de los que aparecen en el estado financiero.');
+                throw new AvisoUsuario('La vigencia ' . $a . ' no está liquidada para este predio. Elige años seguidos de los que aparecen en el estado de cuenta.');
             }
             $f = $existentes[$a];
             if ((int) $f['pagado'] !== 0 || (int) $f['anulada'] !== 0 || (int) $f['prescrito'] !== 0 || (int) $f['acuerdo'] !== 0) {
@@ -217,6 +217,39 @@ final class Predios
         return [$desde, $hasta];
     }
 
+    /**
+     * Todos los bloques de vigencias pendientes SEGUIDAS, [[desde, hasta], ...],
+     * con el año en curso agregado al último si todavía no existe (como
+     * rangoInicial). Al abrir el predio se recalculan todos con la fecha de hoy.
+     */
+    public static function bloques(int $id): array
+    {
+        $anio = (int) date('Y');
+        $anios = array_map('intval', array_column(Db::filas(
+            'SELECT pp.ultimo_anio FROM predios_pagos pp WHERE pp.id_predio = ? AND ' . self::SE_DEBE . ' AND ISNULL(pp.acuerdo, 0) = 0 ORDER BY pp.ultimo_anio',
+            [$id]
+        ), 'ultimo_anio'));
+        $existeActual = (int) Db::valor('SELECT COUNT(*) FROM predios_pagos WHERE id_predio = ? AND ultimo_anio = ?', [$id, $anio]) > 0;
+        $bloques = [];
+        foreach ($anios as $a) {
+            $n = count($bloques);
+            if ($n > 0 && $bloques[$n - 1][1] === $a - 1) {
+                $bloques[$n - 1][1] = $a;
+            } else {
+                $bloques[] = [$a, $a];
+            }
+        }
+        if (!$existeActual) {
+            $n = count($bloques);
+            if ($n > 0 && $bloques[$n - 1][1] === $anio - 1) {
+                $bloques[$n - 1][1] = $anio;
+            } elseif ($n === 0) {
+                $bloques[] = [$anio, $anio];
+            }
+        }
+        return $bloques;
+    }
+
     /** Vigencia más antigua que se debe y se puede pagar (sin acuerdo), o null. */
     public static function primeraDeuda(int $id): ?int
     {
@@ -232,11 +265,14 @@ final class Predios
      * de una transacción, lee las cifras y la deshace. Así ver un predio no
      * escribe nada en la base oficial; solo la factura guarda.
      *
+     * Con $todo = true (al abrir el predio) recalcula también los demás
+     * bloques pendientes, dentro de la misma transacción.
+     *
      * Devuelve ['ok' => bool, 'filas' => estadoCuenta(), 'total' => valor del
      * primer cupón para el rango, 'hasta' => fecha límite de ese valor].
      * Con ok = false las cifras son las últimas guardadas.
      */
-    public static function cotizar(int $id, ?int $desde = null, ?int $hasta = null): array
+    public static function cotizar(int $id, ?int $desde = null, ?int $hasta = null, bool $todo = false): array
     {
         if ($desde === null || $hasta === null) {
             [$desde, $hasta] = self::rangoInicial($id);
@@ -253,7 +289,19 @@ final class Predios
         $pdo->beginTransaction();
         $ok = true;
         try {
-            self::calcular($id, $desde, $hasta);
+            // Al abrir el predio ($todo) se recalculan TODAS las vigencias
+            // pendientes con la fecha de hoy, no solo el rango elegido: así
+            // ninguna cifra en pantalla queda con intereses de otro día. El
+            // rango elegido va de último, para que sus filas tengan el
+            // descuento de pagarlo junto.
+            if ($todo) {
+                foreach (self::bloques($id) as [$bd, $bh]) {
+                    if ($bd !== $desde || $bh !== $hasta) {
+                        self::calcularHoy($id, $bd, $bh);
+                    }
+                }
+            }
+            self::calcularHoy($id, $desde, $hasta);
         } catch (Throwable $t) {
             error_log('[psepaipa] cotizar predio ' . $id . ': ' . $t->getMessage());
             $ok = false;
@@ -310,6 +358,26 @@ final class Predios
         );
     }
 
+    /**
+     * Cálculo oficial de un rango con la fecha de hoy, INCLUIDO el año en curso.
+     *
+     * Probado contra el procedimiento (2026-10-13): con @ANO_FIN (rango de
+     * varios años) recalcula todas las vigencias pendientes anteriores pero NO
+     * la del año en curso, que se quedaba con la cifra del último día en que
+     * alguien la calculó sola (en la prueba, $424 guardado contra $481 de
+     * hoy). Con @ANO = año en curso y @ANO_FIN = 0 -lo que hace la "vista
+     * previa" del sistema oficial- sí la recalcula. Por eso, si el rango llega
+     * al año en curso, primero se corre así y luego el rango.
+     */
+    public static function calcularHoy(int $id, int $desde, int $hasta): void
+    {
+        $anio = (int) date('Y');
+        if ($hasta === $anio && $desde !== $hasta) {
+            self::calcular($id, $anio, $anio);
+        }
+        self::calcular($id, $desde, $hasta);
+    }
+
     /** Corre el cálculo oficial (dentro de la transacción de quien llama). */
     public static function calcular(int $id, int $desde, int $hasta): void
     {
@@ -324,7 +392,7 @@ final class Predios
     }
 
     /**
-     * Vigencias del predio para el estado financiero: todas las que se deben,
+     * Vigencias del predio para el estado de cuenta: todas las que se deben,
      * más las que están en acuerdo de pago o prescritas (para mostrarlas sin
      * poder pagarlas). "Otros" es lo que queda del total una vez separados
      * impuesto, intereses, sobretasa y descuentos, para que cada fila sume

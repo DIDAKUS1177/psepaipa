@@ -77,7 +77,9 @@ final class Vista
     {
         $primario = self::color('color', '#1fa49d');
         $oscuro   = self::color('colorOscuro', '#17756f');
-        $profundo = self::mezclar($oscuro, '#000000', 0.52);
+        // El mismo verde de ICA (MUNICIPIO_COLOR / _OSCURO), sin el tono casi
+        // negro de antes: lo pidió el cliente el 2026-10-13.
+        $profundo = $oscuro;
         $suave    = self::mezclar($primario, '#ffffff', 0.9);
         $ciudad   = (string) config('municipio.ciudad', '');
         $u = usuario();

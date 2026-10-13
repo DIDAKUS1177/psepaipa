@@ -44,7 +44,7 @@ switch (true) {
         break;
     case $estado === 'APPROVED':
         $clase = 'ok'; $titulo = 'Pago aprobado';
-        $mensaje = 'El pago quedó registrado. Las vigencias aparecen pagadas en el estado financiero del predio.';
+        $mensaje = 'El pago quedó registrado. Las vigencias aparecen pagadas en el estado de cuenta del predio.';
         break;
     case $estado === 'DOBLE':
         $clase = 'alerta'; $titulo = 'Pago repetido';

@@ -1,7 +1,7 @@
 <?php
 /**
  * Un predio, con la estructura del portal de Duitama: información del predio y
- * valor a pagar arriba; pestañas de estado financiero (con casillas para
+ * valor a pagar arriba; pestañas de estado de cuenta (con casillas para
  * elegir los años), recibos emitidos e histórico de pagos.
  *
  * Las cifras son una COTIZACIÓN del procedimiento oficial con la fecha de hoy
@@ -33,7 +33,7 @@ try {
         redirigir('inicio.php?vista=otros');
     }
     $propio = Predios::esPropietario($id, $u['documento']);
-    $cotizacion = Predios::cotizar($id);
+    $cotizacion = Predios::cotizar($id, null, null, true);
 } catch (Throwable $t) {
     error_log('[psepaipa] predio ' . $id . ': ' . $t->getMessage());
     aviso('No pudimos calcular el estado de cuenta de este predio en este momento. Intenta de nuevo en unos minutos.', 'error');
@@ -63,6 +63,14 @@ try {
 }
 
 $pagables = array_values(array_filter($vigencias, fn($v) => $v['pagable']));
+$motivoPaz = 'No pudimos revisar el estado del predio.';
+if (!$pagables && $tramite === null) {
+    try {
+        $motivoPaz = PazYSalvo::motivo($id);
+    } catch (Throwable $t) {
+        error_log('[psepaipa] paz y salvo: ' . $t->getMessage());
+    }
+}
 $enAcuerdo = array_values(array_filter($vigencias, fn($v) => $v['estado'] === 'acuerdo'));
 // El valor a pagar es el del cupón oficial del rango, no la suma de filas: el
 // procedimiento aplica descuentos según los años que se pagan juntos.
@@ -229,24 +237,43 @@ Vista::abrir('Predio ' . $p['codigo_predio'], ['titulo' => 'Impuesto Predial Uni
                     <p class="al-dia-titulo">Este predio está al día</p>
                     <?php if ($enAcuerdo): ?>
                         <p>Tiene <?= count($enAcuerdo) ?> vigencia<?= count($enAcuerdo) === 1 ? '' : 's' ?> en acuerdo de pago, que se paga<?= count($enAcuerdo) === 1 ? '' : 'n' ?> con las cuotas del acuerdo en la Alcaldía.</p>
+                    <?php elseif ($motivoPaz === null): ?>
+                        <p>No tiene vigencias pendientes de pago. Descarga aquí el certificado de paz y salvo.</p>
                     <?php else: ?>
-                        <p>No tiene vigencias pendientes de pago. Para el paz y salvo, comunícate con la Dirección de Impuestos.</p>
+                        <p>No tiene vigencias pendientes de pago en línea. <?= e($motivoPaz) ?></p>
                     <?php endif; ?>
                 </div>
+                <?php if (!$enAcuerdo && $motivoPaz === null): ?>
+                <form method="post" action="paz-y-salvo.php" target="_blank" class="paz-form" id="form-paz" data-form-paz>
+                    <input type="hidden" name="csrf" value="<?= e(tokenCsrf()) ?>">
+                    <input type="hidden" name="id" value="<?= (int) $id ?>">
+                    <label class="campo">
+                        <span>Con destino a <small>(opcional)</small></span>
+                        <input type="text" name="destino" maxlength="80" placeholder="A quien interese" autocomplete="off">
+                    </label>
+                    <button type="submit" class="boton boton-primario boton-ancho"><?= Vista::icono('documento') ?>Descargar paz y salvo</button>
+                </form>
+                <?php endif; ?>
             <?php endif; ?>
         </aside>
     </div>
 
     <section class="tarjeta pestanas-detalle" data-pestanas aria-label="Detalle del predio">
         <div class="pestanas pestanas-linea" role="tablist">
-            <button role="tab" aria-selected="true" aria-controls="p-estado" id="b-estado"><?= Vista::icono('lista') ?>Estado financiero</button>
+            <button role="tab" aria-selected="true" aria-controls="p-estado" id="b-estado"><?= Vista::icono('lista') ?>Estado de cuenta</button>
             <button role="tab" aria-selected="false" aria-controls="p-recibos" id="b-recibos" tabindex="-1"><?= Vista::icono('documento') ?>Recibos emitidos<?= $recibos ? ' <span class="contador">' . count($recibos) . '</span>' : '' ?></button>
             <button role="tab" aria-selected="false" aria-controls="p-historico" id="b-historico" tabindex="-1"><?= Vista::icono('reloj') ?>Histórico de pagos</button>
         </div>
 
         <div role="tabpanel" id="p-estado" aria-labelledby="b-estado" tabindex="0">
             <?php if (!$vigencias): ?>
-                <div class="vacio vacio-chico"><?= Vista::icono('chequeo') ?><h3>Sin saldos pendientes</h3><p>Este predio no tiene vigencias por pagar.</p></div>
+                <div class="vacio vacio-chico"><?= Vista::icono('chequeo') ?><h3>Sin saldos pendientes</h3><p>Este predio no tiene vigencias por pagar.</p>
+                    <?php if (!$enAcuerdo && $motivoPaz === null): ?>
+                        <p><button type="submit" form="form-paz" class="boton boton-primario"><?= Vista::icono('documento') ?>Descargar paz y salvo</button></p>
+                    <?php elseif (!$enAcuerdo && $tramite === null): ?>
+                        <p class="texto-tenue"><?= e($motivoPaz) ?></p>
+                    <?php endif; ?>
+                </div>
             <?php else: ?>
                 <div class="tabla-ayuda">
                     <p><?= Vista::icono('info') ?><span>Marca las vigencias que vas a pagar. Se pagan años seguidos: si dejas uno en medio, se incluye. El total se recalcula con cada cambio.<?= $hayBloques ? ' Este predio tiene vigencias no seguidas: se pagan por grupos, en facturas separadas.' : '' ?></span></p>
@@ -256,7 +283,7 @@ Vista::abrir('Predio ' . $p['codigo_predio'], ['titulo' => 'Impuesto Predial Uni
                 </div>
                 <div class="tabla-caja">
                     <table class="tabla tabla-vigencias" data-vigencias>
-                        <caption class="oculto">Estado financiero por vigencia, en pesos</caption>
+                        <caption class="oculto">Estado de cuenta por vigencia, en pesos</caption>
                         <thead>
                             <tr>
                                 <th scope="col" class="col-casilla"><?php if (!$hayBloques): ?><input type="checkbox" aria-label="Seleccionar todas las vigencias" data-todas <?= $pagables ? 'checked' : 'disabled' ?>><?php endif; ?></th>

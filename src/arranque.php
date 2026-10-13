@@ -51,6 +51,7 @@ require_once __DIR__ . '/Predios.php';
 require_once __DIR__ . '/Factura.php';
 require_once __DIR__ . '/AvalPay.php';
 require_once __DIR__ . '/PagoLinea.php';
+require_once __DIR__ . '/PazYSalvo.php';
 require_once __DIR__ . '/Vista.php';
 
 $esHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
@@ -111,6 +112,13 @@ function fechaCorta($fecha): string
     }
     $t = $fecha instanceof DateTimeInterface ? $fecha->getTimestamp() : strtotime((string) $fecha);
     return $t ? date('d/m/Y', $t) : '';
+}
+
+/** Dirección pública del portal, sin barra final (config url_publica o la de esta petición). */
+function urlPublica(): string
+{
+    $esquema = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https') ? 'https' : 'http';
+    return rtrim((string) config('url_publica', $esquema . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost')), '/');
 }
 
 function hoy(): string

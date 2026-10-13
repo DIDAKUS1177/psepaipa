@@ -332,8 +332,6 @@ final class PagoLinea
     /** Enlace de vuelta firmado (sirve aunque la sesión del portal haya vencido). */
     public static function urlRetorno(int $id): string
     {
-        $esquema = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https') ? 'https' : 'http';
-        $base = rtrim((string) config('url_publica', $esquema . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost')), '/');
-        return $base . '/retorno.php?i=' . $id . '&t=' . AvalPay::firmaRetorno($id);
+        return urlPublica() . '/retorno.php?i=' . $id . '&t=' . AvalPay::firmaRetorno($id);
     }
 }

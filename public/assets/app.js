@@ -144,6 +144,14 @@
         texto.addEventListener('input', aplicar);
     }
 
+    // ---------- Paz y salvo (se abre en una pestaña nueva) ----------
+    var formPaz = $('[data-form-paz]');
+    if (formPaz) {
+        formPaz.addEventListener('submit', function () {
+            avisar('Generando el paz y salvo: se abrirá en una pestaña nueva.');
+        });
+    }
+
     // ---------- Vigencias: selección y valor exacto ----------
     var tabla = $('[data-vigencias]');
     var form = $('[data-form-pago]');
