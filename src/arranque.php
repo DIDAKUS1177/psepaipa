@@ -18,6 +18,18 @@ if (!is_file($rutaConfig)) {
 }
 $GLOBALS['CONFIG'] = require $rutaConfig;
 
+// Conexión tomada del appsettings.json de la API .NET anterior (ver
+// src/ConexionNet.php), si el config lo indica.
+if (!empty($GLOBALS['CONFIG']['db_appsettings'])) {
+    require_once __DIR__ . '/ConexionNet.php';
+    $db = ConexionNet::leer((string) $GLOBALS['CONFIG']['db_appsettings'], $GLOBALS['CONFIG']['db_appsettings_nombre'] ?? null);
+    if ($db !== null) {
+        $GLOBALS['CONFIG']['db'] = $db;
+    } else {
+        error_log('[psepaipa] No se pudo leer la conexión de ' . $GLOBALS['CONFIG']['db_appsettings']);
+    }
+}
+
 // Un aviso de PHP impreso antes de un JSON lo rompe (lección de ICA): los
 // errores van al log, nunca a la pantalla, salvo en desarrollo.
 $depurar = !empty($GLOBALS['CONFIG']['depurar']);
