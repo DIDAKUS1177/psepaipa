@@ -32,15 +32,28 @@ if ($intento !== null) {
     } catch (Throwable $t) {
         $fallaConsulta = true;
         error_log('[psepaipa retorno] intento ' . $id . ': ' . $t->getMessage());
+        // Pudo quedar anotado "aprobado, sin registrar": mostrar el estado real.
+        try {
+            $intento = PagoLinea::intento($id) ?? $intento;
+        } catch (Throwable $t2) {
+        }
     }
 }
 
 $estado = $intento !== null ? (string) $intento['EstadoTransaccion'] : '';
-$sinIntentoBanco = $info !== null && !empty($info['sinIntento']);
+$sinIntentoBanco = $info !== null && !empty($info['sinIntento']) && (int) ($intento['Activo'] ?? 0) === 1;
 switch (true) {
     case $intento === null:
         $clase = 'error'; $titulo = 'Enlace no válido';
         $mensaje = 'No pudimos verificar este enlace de pago. Consulta el estado desde la página del predio.';
+        break;
+    case $estado === 'APPROVED' && (int) $intento['Activo'] === 1:
+        $clase = 'pendiente'; $titulo = 'Pago aprobado, en registro';
+        $mensaje = 'El banco aprobó el pago y lo estamos registrando en el sistema de predial. No vuelvas a pagar; si en unas horas no aparece, comunícate con la Dirección de Impuestos con la referencia.';
+        break;
+    case $estado === 'PRUEBAS':
+        $clase = 'alerta'; $titulo = 'Pago de prueba';
+        $mensaje = 'El pago se hizo en el ambiente de pruebas de AvalPay: no es un pago real y no se registra.';
         break;
     case $estado === 'APPROVED':
         $clase = 'ok'; $titulo = 'Pago aprobado';
@@ -75,7 +88,7 @@ switch (true) {
 }
 
 $nombresEstado = ['APPROVED' => 'Aprobado', 'PENDING' => 'Pendiente', 'COMENZADA' => 'Iniciado', 'REJECTED' => 'Rechazado',
-                  'EXPIRED' => 'Vencido', 'FAILED' => 'Fallido', 'DOBLE' => 'Pago repetido', 'REVISAR' => 'En revisión'];
+                  'EXPIRED' => 'Vencido', 'FAILED' => 'Fallido', 'DOBLE' => 'Pago repetido', 'REVISAR' => 'En revisión', 'PRUEBAS' => 'Prueba'];
 $chip = ['ok' => 'chip-ok', 'pendiente' => 'chip-info', 'alerta' => 'chip-pendiente', 'error' => 'chip-pendiente'][$clase];
 $icono = ['ok' => 'chequeo', 'pendiente' => 'reloj', 'alerta' => 'alerta', 'error' => 'alerta'][$clase];
 $fecha = $intento !== null ? date('d/m/Y h:i a', strtotime((string) ($info['fecha'] ?? $intento['created_at']))) : '';

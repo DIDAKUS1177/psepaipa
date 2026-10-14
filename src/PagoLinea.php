@@ -42,18 +42,36 @@ final class PagoLinea
      * Intento en curso del predio, o null. Uno con sesión en AvalPay bloquea
      * hasta que una consulta diga en qué terminó (retorno, aviso, la tarea
      * programada o refrescar()): un pago empezado al minuto 29 puede quedar
-     * pendiente en el banco. Uno sin sesión, solo unos minutos.
+     * pendiente en el banco. Uno sin sesión, solo unos minutos. Uno APROBADO
+     * por el banco que no se pudo registrar bloquea SIN límite: la plata ya
+     * entró y el predio no debe volver a cobrarse.
      */
     public static function enTramite(int $idPredio): ?array
     {
         return Db::fila(
             "SELECT TOP 1 * FROM generacion_pagos
-              WHERE proveedor = ? AND referencia = ? AND Activo = 1 AND created_at >= ?
-                AND (ISNULL(IDTransaccion, '') <> '' OR created_at >= ?)
+              WHERE proveedor = ? AND referencia = ? AND Activo = 1
+                AND (EstadoTransaccion = 'APPROVED'
+                     OR (created_at >= ? AND (ISNULL(IDTransaccion, '') <> '' OR created_at >= ?)))
               ORDER BY IdGeneraPado DESC",
             [self::proveedor(), (string) $idPredio,
              date('Y-m-d\TH:i:s', time() - self::DIAS_PENDIENTE * 86400),
              date('Y-m-d\TH:i:s', time() - self::MINUTOS_COMENZADA * 60)]
+        );
+    }
+
+    /**
+     * Pago aprobado por el banco que quedó para conciliar a mano (REVISAR) en
+     * los últimos 60 días, o null. Mientras exista, el predio avisa y no abre
+     * otro pago en línea: el banco ya cobró.
+     */
+    public static function porConciliar(int $idPredio): ?array
+    {
+        return Db::fila(
+            "SELECT TOP 1 * FROM generacion_pagos
+              WHERE proveedor = ? AND referencia = ? AND EstadoTransaccion = 'REVISAR' AND created_at >= ?
+              ORDER BY IdGeneraPado DESC",
+            [self::proveedor(), (string) $idPredio, date('Y-m-d\TH:i:s', time() - 60 * 86400)]
         );
     }
 
@@ -64,14 +82,14 @@ final class PagoLinea
      */
     public static function refrescar(int $idPredio): void
     {
-        if (!AvalPay::configurado()) {
-            return;
-        }
         $abiertos = Db::filas(
             "SELECT * FROM generacion_pagos
               WHERE proveedor = ? AND referencia = ? AND Activo = 1 AND ISNULL(IDTransaccion, '') <> '' AND created_at < ?",
             [self::proveedor(), (string) $idPredio, date('Y-m-d\TH:i:s', time() - self::MINUTOS_COMENZADA * 60)]
         );
+        if (!$abiertos || !AvalPay::configurado()) {
+            return;
+        }
         foreach ($abiertos as $i) {
             try {
                 self::actualizar($i);
@@ -107,18 +125,31 @@ final class PagoLinea
     }
 
     /**
-     * Anota el intento si el predio no tiene otro en curso (con candado: dos
-     * pestañas no pueden abrir dos pagos). Devuelve el id o null si ya hay uno.
+     * Anota el intento si el predio no tiene otro en curso. Usa el MISMO
+     * candado de Factura::generar: entre generar la factura y anotar el
+     * intento, otra petición pudo renumerar las vigencias (y el pago llegaría
+     * con un número que ya no tienen); por eso se vuelve a comprobar que la
+     * factura sigue cubriendo el rango por el mismo valor. Devuelve el id o
+     * null si ya hay un pago en curso. Lanza AvisoUsuario si la factura cambió.
      */
     public static function crearIntento(int $idPredio, string $factura, int $valor, string $documento, int $desde, int $hasta): ?int
     {
         $pdo = Db::pdo();
         $pdo->beginTransaction();
         try {
-            Db::candado('psepaipa_pago_predio_' . $idPredio);
+            Db::candado('psepaipa_factura_' . $idPredio);
             if (self::enTramite($idPredio) !== null) {
                 $pdo->rollBack();
                 return null;
+            }
+            $filas = Db::filas(
+                'SELECT ultimo_anio, total_calculo FROM predios_pagos
+                  WHERE id_predio = ? AND factura_pago = ? AND pagado = 0 AND ISNULL(anulada, 0) = 0 ORDER BY ultimo_anio',
+                [$idPredio, $factura]
+            );
+            if (array_map(fn($f) => (int) $f['ultimo_anio'], $filas) !== range($desde, $hasta)
+                || (int) round(array_sum(array_map(fn($f) => (float) $f['total_calculo'], $filas))) !== $valor) {
+                throw new AvisoUsuario('La factura de este predio cambió mientras se preparaba el pago. Vuelve a abrir el predio e intenta de nuevo.');
             }
             $id = (int) Db::valor(
                 "INSERT INTO generacion_pagos
@@ -184,7 +215,20 @@ final class PagoLinea
     {
         $id = (int) $i['IdGeneraPado'];
         if ($info['aprobado']) {
-            self::registrar($i, $info);
+            try {
+                self::registrar($i, $info);
+            } catch (Throwable $t) {
+                // El banco aprobó y no se pudo registrar: que quede el rastro
+                // (APPROVED con Activo = 1 bloquea el predio sin límite y la
+                // tarea lo reintenta) y que el error suba al log.
+                Db::ejecutar(
+                    "UPDATE generacion_pagos SET EstadoTransaccion = 'APPROVED', Mensaje = ?, CUS = ?, MedioPago = ?
+                      WHERE IdGeneraPado = ? AND Activo = 1",
+                    [mb_substr('Aprobado, sin registrar: ' . $t->getMessage(), 0, 100), mb_substr($info['autorizacion'], 0, 50),
+                     mb_substr($info['banco'], 0, 50), $id]
+                );
+                throw $t;
+            }
             return;
         }
         $estado = $info['estado'];
@@ -232,6 +276,12 @@ final class PagoLinea
                 error_log('[psepaipa pago] intento ' . $id . ' ' . $estado . ': ' . $mensaje);
             };
 
+            // Un APPROVED del ambiente de pruebas de AvalPay no es plata real.
+            if (AvalPay::esPruebas() && !config('avalpay.registrar_pruebas', false)) {
+                $marca('PRUEBAS', 'Aprobado en el ambiente de pruebas de AvalPay: no se registra');
+                $pdo->commit();
+                return;
+            }
             if ((int) Db::valor('SELECT COUNT(*) FROM pagos WHERE CAST(numero_recibo AS NVARCHAR(50)) = ?', [$factura]) > 0) {
                 $marca('DOBLE', 'Aprobado, pero la factura ya estaba pagada');
                 $pdo->commit();
@@ -265,8 +315,9 @@ final class PagoLinea
             $columnas = ['fecha_pago', 'numero_recibo', 'id_predio', 'valor_facturado', 'anio_pago', 'fecha_factura',
                          'id_banco_factura', 'id_banco_archivo', 'origen', 'acuerdo', 'created_at', 'updated_at'];
             $ahora = date('Y-m-d\TH:i:s');
+            $emision = $ultima['fecha_emision'] ? substr((string) $ultima['fecha_emision'], 0, 10) . 'T00:00:00' : $fecha;
             $valores = [$fecha, $factura, $idPredio, $valor, (int) $ultima['ultimo_anio'],
-                        substr((string) ($ultima['fecha_emision'] ?? $fecha), 0, 10), $banco, $banco, 'A', 0, $ahora, $ahora];
+                        $emision, $banco, $banco, 'A', 0, $ahora, $ahora];
             if (self::pagosTieneUsuario()) {
                 $columnas[] = 'id_usuario';
                 $valores[] = (int) config('usuario_sistema', 1);
@@ -319,13 +370,17 @@ final class PagoLinea
         return (int) Db::valor("SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('pagos') AND name = 'id_usuario'") > 0;
     }
 
-    /** Fecha del banco en hora de Colombia, como fecha de pago (Y-m-d). */
+    /**
+     * Fecha del banco en hora de Colombia, a medianoche y en ISO con "T":
+     * predios_pagos.fecha_pago es datetime y, con un login en español,
+     * '2026-10-13' se lee día-mes (error o fecha invertida).
+     */
     private static function fechaColombia(string $iso): string
     {
         try {
-            return (new DateTime($iso))->setTimezone(new DateTimeZone('America/Bogota'))->format('Y-m-d');
+            return (new DateTime($iso))->setTimezone(new DateTimeZone('America/Bogota'))->format('Y-m-d\T00:00:00');
         } catch (Throwable $t) {
-            return date('Y-m-d');
+            return date('Y-m-d\T00:00:00');
         }
     }
 

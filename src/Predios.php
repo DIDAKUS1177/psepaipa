@@ -19,6 +19,19 @@ final class Predios
     /** Condición de una vigencia que se debe y se puede pagar en línea. */
     const SE_DEBE = 'pp.pagado = 0 AND ISNULL(pp.anulada, 0) = 0 AND ISNULL(pp.prescrito, 0) = 0';
 
+    /**
+     * Vigencia dentro de un acuerdo de pago ACTIVO. El sistema oficial no marca
+     * predios_pagos.acuerdo: el acuerdo vive en predios_acuerdos_pago
+     * (estado_acuerdo = 1, años anio_inicial_acuerdo a anio_final_acuerdo) y se
+     * paga por cuotas en la Alcaldía. Esas vigencias no se pagan ni se facturan
+     * aquí (revisión del 2026-10-13: en la copia había 10 acuerdos activos con
+     * la marca en 0 y el portal las dejaba pagar).
+     */
+    const EN_ACUERDO = '(ISNULL(pp.acuerdo, 0) <> 0 OR EXISTS (SELECT 1 FROM predios_acuerdos_pago ap
+                          WHERE ap.id_predio = pp.id_predio AND ap.estado_acuerdo = 1
+                            AND pp.ultimo_anio BETWEEN ap.anio_inicial_acuerdo AND ap.anio_final_acuerdo))';
+    const SIN_ACUERDO = 'NOT ' . self::EN_ACUERDO;
+
     /** Referencia catastral como se guarda: solo dígitos. */
     public static function normalizarReferencia(string $ref): string
     {
@@ -163,8 +176,9 @@ final class Predios
         }
         $existentes = [];
         foreach (Db::filas(
-            'SELECT ultimo_anio, pagado, anulada, prescrito, acuerdo FROM predios_pagos' . ($bloquear ? ' WITH (UPDLOCK)' : '') . '
-              WHERE id_predio = ? AND ultimo_anio BETWEEN ? AND ?',
+            'SELECT pp.ultimo_anio, pp.pagado, pp.anulada, pp.prescrito, CASE WHEN ' . self::EN_ACUERDO . ' THEN 1 ELSE 0 END AS acuerdo
+               FROM predios_pagos pp' . ($bloquear ? ' WITH (UPDLOCK)' : '') . '
+              WHERE pp.id_predio = ? AND pp.ultimo_anio BETWEEN ? AND ?',
             [$id, $desde, $hasta]
         ) as $f) {
             $existentes[(int) $f['ultimo_anio']] = $f;
@@ -193,7 +207,7 @@ final class Predios
     {
         $anio = (int) date('Y');
         $anios = array_map('intval', array_column(Db::filas(
-            'SELECT pp.ultimo_anio FROM predios_pagos pp WHERE pp.id_predio = ? AND ' . self::SE_DEBE . ' AND ISNULL(pp.acuerdo, 0) = 0 ORDER BY pp.ultimo_anio',
+            'SELECT pp.ultimo_anio FROM predios_pagos pp WHERE pp.id_predio = ? AND ' . self::SE_DEBE . ' AND ' . self::SIN_ACUERDO . ' ORDER BY pp.ultimo_anio',
             [$id]
         ), 'ultimo_anio'));
         $existeActual = (int) Db::valor('SELECT COUNT(*) FROM predios_pagos WHERE id_predio = ? AND ultimo_anio = ?', [$id, $anio]) > 0;
@@ -226,7 +240,7 @@ final class Predios
     {
         $anio = (int) date('Y');
         $anios = array_map('intval', array_column(Db::filas(
-            'SELECT pp.ultimo_anio FROM predios_pagos pp WHERE pp.id_predio = ? AND ' . self::SE_DEBE . ' AND ISNULL(pp.acuerdo, 0) = 0 ORDER BY pp.ultimo_anio',
+            'SELECT pp.ultimo_anio FROM predios_pagos pp WHERE pp.id_predio = ? AND ' . self::SE_DEBE . ' AND ' . self::SIN_ACUERDO . ' ORDER BY pp.ultimo_anio',
             [$id]
         ), 'ultimo_anio'));
         $existeActual = (int) Db::valor('SELECT COUNT(*) FROM predios_pagos WHERE id_predio = ? AND ultimo_anio = ?', [$id, $anio]) > 0;
@@ -254,7 +268,7 @@ final class Predios
     public static function primeraDeuda(int $id): ?int
     {
         $min = Db::valor(
-            'SELECT MIN(pp.ultimo_anio) FROM predios_pagos pp WHERE pp.id_predio = ? AND ' . self::SE_DEBE . ' AND ISNULL(pp.acuerdo, 0) = 0',
+            'SELECT MIN(pp.ultimo_anio) FROM predios_pagos pp WHERE pp.id_predio = ? AND ' . self::SE_DEBE . ' AND ' . self::SIN_ACUERDO,
             [$id]
         );
         return $min === null ? null : (int) $min;
@@ -312,7 +326,7 @@ final class Predios
             }
             $filas = self::estadoCuenta($id);
             $rango = Db::filas(
-                'SELECT * FROM predios_pagos pp WHERE pp.id_predio = ? AND pp.ultimo_anio BETWEEN ? AND ? AND ' . self::SE_DEBE . ' AND ISNULL(pp.acuerdo, 0) = 0 ORDER BY pp.ultimo_anio',
+                'SELECT * FROM predios_pagos pp WHERE pp.id_predio = ? AND pp.ultimo_anio BETWEEN ? AND ? AND ' . self::SE_DEBE . ' AND ' . self::SIN_ACUERDO . ' ORDER BY pp.ultimo_anio',
                 [$id, $desde, $hasta]
             );
         } finally {
@@ -401,7 +415,8 @@ final class Predios
     public static function estadoCuenta(int $id): array
     {
         $filas = Db::filas(
-            "SELECT pp.id, pp.ultimo_anio AS anio, pp.avaluo, pp.tarifa, pp.pagado, pp.anulada, pp.prescrito, pp.exencion, pp.acuerdo,
+            "SELECT pp.id, pp.ultimo_anio AS anio, pp.avaluo, pp.tarifa, pp.pagado, pp.anulada, pp.prescrito, pp.exencion,
+                    CASE WHEN " . self::EN_ACUERDO . " THEN 1 ELSE 0 END AS acuerdo,
                     pp.valor_concepto1 AS c1, pp.valor_concepto2 AS c2, pp.valor_concepto3 AS c3, pp.valor_concepto4 AS c4,
                     pp.valor_concepto13 AS c13, pp.valor_concepto15 AS c15,
                     pp.total_calculo, pp.total_dos, pp.total_tres,

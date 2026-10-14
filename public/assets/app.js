@@ -147,7 +147,11 @@
     // ---------- Paz y salvo (se abre en una pestaña nueva) ----------
     var formPaz = $('[data-form-paz]');
     if (formPaz) {
-        formPaz.addEventListener('submit', function () {
+        formPaz.addEventListener('submit', function (ev) {
+            // Un solo envío a la vez: el doble clic abría dos pestañas.
+            if (formPaz._enviando) { ev.preventDefault(); return; }
+            formPaz._enviando = true;
+            setTimeout(function () { formPaz._enviando = false; }, 4000);
             avisar('Generando el paz y salvo: se abrirá en una pestaña nueva.');
         });
     }

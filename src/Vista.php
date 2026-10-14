@@ -133,21 +133,21 @@ final class Vista
                     </form>
                 </div>
             <?php elseif ($seccion !== 'entrada'): ?>
-                <a class="boton boton-contorno boton-chico" href="./?v=inscribirse">Registrarse</a>
+                <a class="boton boton-contorno boton-chico boton-registrarse" href="./?v=inscribirse">Registrarse</a>
                 <a class="boton boton-primario boton-chico" href="./"><?= self::icono('entrar') ?>Iniciar sesión</a>
             <?php endif; ?>
         </div>
     </div>
     <nav class="menu" aria-label="Menú principal">
         <div class="contenedor menu-fila">
-            <a href="<?= e(config('municipio.portal')) ?>"><?= self::icono('casa') ?>Portal Tributario</a>
+            <a href="<?= e(config('municipio.portal')) ?>"><?= self::icono('casa') ?><span class="texto-largo">Portal Tributario</span><span class="texto-corto">Portal</span></a>
             <?php if ($u): ?>
                 <a href="inicio.php" class="<?= $seccion === 'predios' ? 'activo' : '' ?>" <?= $seccion === 'predios' ? 'aria-current="page"' : '' ?>><?= self::icono('predio') ?>Mis predios</a>
-                <a href="inicio.php?vista=otros" class="<?= $seccion === 'otro' ? 'activo' : '' ?>" <?= $seccion === 'otro' ? 'aria-current="page"' : '' ?>><?= self::icono('buscar') ?>Otros predios</a>
+                <a href="inicio.php?vista=otros" class="<?= $seccion === 'otro' ? 'activo' : '' ?>" <?= $seccion === 'otro' ? 'aria-current="page"' : '' ?>><?= self::icono('buscar') ?><span class="texto-largo">Otros predios</span><span class="texto-corto">Otros</span></a>
             <?php else: ?>
                 <a href="./" class="<?= $seccion === 'entrada' ? 'activo' : '' ?>"><?= self::icono('predio') ?>Impuesto predial</a>
             <?php endif; ?>
-            <a href="#contacto"><?= self::icono('telefono') ?>Contáctenos</a>
+            <a href="#contacto"><?= self::icono('telefono') ?><span class="texto-largo">Contáctenos</span><span class="texto-corto">Contacto</span></a>
         </div>
     </nav>
 </header>

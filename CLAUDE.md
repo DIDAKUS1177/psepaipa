@@ -126,10 +126,28 @@ Misma integración de ICA (`src/AvalPay.php`, de `business/class.placetopay.php`
   año en curso pagado y sin pago en curso; el mismo predio el mismo día repite el certificado.
   Propietario oculto. Botón en «Valor a pagar» y en «Sin saldos pendientes».
 - La pestaña «Estado financiero» se llama **«Estado de cuenta»**.
-- **PSE con la cuenta de ICA**: `avalpay_ica` = ruta del `config.municipio.php` de ICA; se lee
+- **PSE con la cuenta de ICA**: `avalpay_ica` = ruta del `config.municipio.php` de ICA (en Paipa:
+  `industria-comercio-paipa.erpsoftsas.com/App/Firma_digital/erpsoftsas/`); se lee
   sin ejecutarlo (constantes DB_PROD_* y PLACETOPAY_*, y `conf_parametros` PASARELA_*).
   Con esa cuenta los avisos de AvalPay llegan a la URL de ICA: aquí confirman el retorno y la
   tarea. Los puntos de pago de la factura ya coinciden con la liquidación oficial de Paipa.
+
+## Revisión antes de subir (2026-10-13, tres revisores)
+
+- **Política de seguridad**: `form-action` permite `checkout(.test).avalpaycenter.com`; sin eso
+  Chrome bloqueaba la redirección a AvalPay en IIS (en local, Apache no lee `web.config`).
+- **Fechas a `datetime`** siempre con "T" (`fecha_pago` de `predios_pagos` con login en español:
+  del 13 al 31 fallaba y del 1 al 12 invertía día y mes). `probar_fechas.php` prueba en español.
+- **Pago aprobado que no se pudo registrar**: queda `APPROVED` con `Activo = 1`, bloquea el
+  predio sin límite de días y la tarea lo reintenta. `REVISAR` reciente: aviso en el predio y
+  sin pago en línea. En el ambiente de pruebas de AvalPay un aprobado queda `PRUEBAS` (no se
+  registra). `crearIntento` toma el candado de la factura y comprueba que siga igual.
+- **Acuerdos de pago**: el oficial no marca `predios_pagos.acuerdo`; el acuerdo activo está en
+  `predios_acuerdos_pago` (`Predios::EN_ACUERDO`). Esas vigencias no se pagan ni se facturan aquí.
+- **Paz y salvo**: se decide con las marcas (no con `total_calculo`, que puede estar en 0 sin
+  calcular); topes por usuario, IP y hora; salta números ya usados; reutiliza solo para el
+  mismo usuario; `validar.php` cuenta una consulta por IP al día.
+- Menú en celular con nombres cortos hasta 640 px; contraste del pie.
 
 ## Pendiente
 

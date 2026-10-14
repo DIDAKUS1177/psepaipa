@@ -26,7 +26,13 @@ if (Limites::excedido('validar_ip_' . Limites::ip(), 60, 3600)) {
                 $estado = 'agotado';
             } elseif (substr((string) $q['fecha_validez'], 0, 10) < hoy()) {
                 $estado = 'vencido';
+            } elseif (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET'
+                || Limites::cuenta('validar_' . sha1($token . '|' . Limites::ip()), 86400) > 0) {
+                // Una consulta por persona al día (las vistas previas de enlaces,
+                // los escáneres y las recargas no gastan las 5 del certificado).
+                $estado = 'valido';
             } else {
+                Limites::anotar('validar_' . sha1($token . '|' . Limites::ip()));
                 Db::ejecutar(
                     'UPDATE predios_validaciones_qr SET validation_count = validation_count + 1, is_validated = 1, validated_at = ?,
                             validated_ip = ?, validated_user_agent = ?, updated_at = ? WHERE id = ?',

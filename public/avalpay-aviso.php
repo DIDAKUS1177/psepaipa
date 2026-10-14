@@ -18,6 +18,12 @@ function responder(array $r, int $codigo = 200): void
     exit;
 }
 
+// Freno por IP: validar la firma puede abrir la base del convenio de ICA.
+if (Limites::excedido('aviso_ip_' . Limites::ip(), 120, 3600)) {
+    responder(['ok' => false, 'mensaje' => 'Demasiadas solicitudes'], 429);
+}
+Limites::anotar('aviso_ip_' . Limites::ip());
+
 $cuerpo = json_decode((string) file_get_contents('php://input'), true);
 if (!is_array($cuerpo) || empty($cuerpo['requestId'])) {
     responder(['ok' => false, 'mensaje' => 'Falta requestId'], 400);

@@ -78,7 +78,7 @@ function tarjetaPredio(array $p, bool $ajeno): void
                     <?php // El valor no se muestra en el listado (pedido del cliente,
                           // 2026-10-13): el que vale es el que se calcula con la
                           // fecha de hoy al entrar al predio. ?>
-                    <p class="monto monto-oculto" aria-label="Valor oculto: entra al predio para verlo">$ ******</p>
+                    <p class="monto monto-oculto"><span class="oculto">Valor oculto: entra al predio para verlo.</span><span aria-hidden="true">$ ******</span></p>
                 <?php else: ?>
                     <p class="etiqueta">Último año pagado</p>
                     <p class="monto"><?= e($p['ultimo_anio_pago'] ?: '—') ?></p>
@@ -151,7 +151,7 @@ Vista::abrir($vista === 'otros' ? 'Otros predios' : 'Mis predios', ['titulo' => 
                 <ul class="predios">
                     <?php foreach ($mios as $p) { tarjetaPredio($p, false); } ?>
                 </ul>
-                <p class="nota-cifras"><?= Vista::icono('info') ?>Los valores de las tarjetas son los del último cálculo. Al abrir el predio verás el valor exacto de hoy, con intereses y descuentos.</p>
+                <p class="nota-cifras"><?= Vista::icono('info') ?>Para ver el valor a pagar de hoy, con intereses y descuentos, entra al predio.</p>
             <?php endif; ?>
 
         <?php else: ?>

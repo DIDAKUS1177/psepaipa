@@ -77,10 +77,19 @@ final class PdfPredial
      * Datos del predio. Los propietarios van ocultos siempre: la cuenta no
      * prueba que quien se inscribió con un documento sea el dueño.
      */
-    public static function predio(TCPDF $pdf, array $p): void
+    public static function predio(TCPDF $pdf, array $p, int $maxPropietarios = 0): void
     {
-        $nombres = array_map(fn($x) => Predios::enmascararNombre((string) $x['nombre']), $p['propietarios']);
-        $documentos = array_map(fn($x) => Predios::enmascararDocumento((string) $x['identificacion']), $p['propietarios']);
+        $lista = $p['propietarios'];
+        $resto = 0;
+        if ($maxPropietarios > 0 && count($lista) > $maxPropietarios) {
+            $resto = count($lista) - $maxPropietarios;
+            $lista = array_slice($lista, 0, $maxPropietarios);
+        }
+        $nombres = array_map(fn($x) => Predios::enmascararNombre((string) $x['nombre']), $lista);
+        $documentos = array_map(fn($x) => Predios::enmascararDocumento((string) $x['identificacion']), $lista);
+        if ($resto > 0) {
+            $nombres[] = 'y ' . $resto . ' más';
+        }
         $h = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
         $fila = function ($a, $b, $c, $d) use ($h) {
             return '<tr><td width="18%" style="background-color:#e8f4f2;"><b>' . $a . '</b></td><td width="32%">' . $h($b) . '</td>'

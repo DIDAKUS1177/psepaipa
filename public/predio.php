@@ -58,13 +58,21 @@ $tramite = null;
 try {
     PagoLinea::refrescar($id);
     $tramite = PagoLinea::enTramite($id);
+    $conciliar = PagoLinea::porConciliar($id);
 } catch (Throwable $t) {
     error_log('[psepaipa] pago en trámite: ' . $t->getMessage());
 }
+$conciliar ??= null;
+// Con un pago aprobado en revisión no se ofrece otro pago en línea.
+$pagoEnLinea = $pagoEnLinea && $conciliar === null;
 
 $pagables = array_values(array_filter($vigencias, fn($v) => $v['pagable']));
+// Con un pago en curso no hay nada que elegir (ni formulario de pago).
+$seleccionable = $pagables && $tramite === null;
 $motivoPaz = 'No pudimos revisar el estado del predio.';
-if (!$pagables && $tramite === null) {
+if (!$pagables && $tramite === null && $alDia) {
+    // Solo con el cálculo de hoy hecho ($alDia = cotización correcta): con
+    // cifras guardadas un año sin calcular podía verse "al día".
     try {
         $motivoPaz = PazYSalvo::motivo($id);
     } catch (Throwable $t) {
@@ -165,6 +173,9 @@ Vista::abrir('Predio ' . $p['codigo_predio'], ['titulo' => 'Impuesto Predial Uni
         <aside class="tarjeta valor-pagar" aria-labelledby="t-valor">
             <p class="oculto" role="status" data-anuncio></p>
             <h2 id="t-valor" class="tarjeta-titulo">Valor a pagar</h2>
+            <?php if ($conciliar !== null && $tramite === null): ?>
+                <div class="aviso aviso-alerta aviso-conciliar" role="status"><?= Vista::icono('alerta') ?><span>El <?= e(fechaCorta($conciliar['created_at'])) ?> el banco aprobó un pago en línea de <?= pesos($conciliar['total']) ?> (factura <?= e(trim((string) $conciliar['factura'])) ?>) que la Alcaldía está revisando. Antes de volver a pagar, comunícate con la Dirección de Impuestos.</span></div>
+            <?php endif; ?>
             <?php if ($tramite !== null): ?>
                 <div class="pago-curso">
                     <?= Vista::icono('reloj') ?>
@@ -269,15 +280,19 @@ Vista::abrir('Predio ' . $p['codigo_predio'], ['titulo' => 'Impuesto Predial Uni
             <?php if (!$vigencias): ?>
                 <div class="vacio vacio-chico"><?= Vista::icono('chequeo') ?><h3>Sin saldos pendientes</h3><p>Este predio no tiene vigencias por pagar.</p>
                     <?php if (!$enAcuerdo && $motivoPaz === null): ?>
-                        <p><button type="submit" form="form-paz" class="boton boton-primario"><?= Vista::icono('documento') ?>Descargar paz y salvo</button></p>
+                        <p class="vacio-accion"><button type="submit" form="form-paz" class="boton boton-primario"><?= Vista::icono('documento') ?>Descargar paz y salvo</button></p>
                     <?php elseif (!$enAcuerdo && $tramite === null): ?>
                         <p class="texto-tenue"><?= e($motivoPaz) ?></p>
                     <?php endif; ?>
                 </div>
             <?php else: ?>
                 <div class="tabla-ayuda">
+                    <?php if ($tramite !== null): ?>
+                    <p><?= Vista::icono('reloj') ?><span>Hay un pago en línea en curso para este predio. Cuando el banco lo confirme, las vigencias pagadas saldrán de esta lista.</span></p>
+                    <?php else: ?>
                     <p><?= Vista::icono('info') ?><span>Marca las vigencias que vas a pagar. Se pagan años seguidos: si dejas uno en medio, se incluye. El total se recalcula con cada cambio.<?= $hayBloques ? ' Este predio tiene vigencias no seguidas: se pagan por grupos, en facturas separadas.' : '' ?></span></p>
-                    <?php if ($pagables): ?>
+                    <?php endif; ?>
+                    <?php if ($seleccionable): ?>
                     <p class="tabla-seleccion" data-resumen-seleccion><?= count($marcadas) ?> de <?= count($pagables) ?> vigencias seleccionadas</p>
                     <?php endif; ?>
                 </div>
@@ -286,7 +301,7 @@ Vista::abrir('Predio ' . $p['codigo_predio'], ['titulo' => 'Impuesto Predial Uni
                         <caption class="oculto">Estado de cuenta por vigencia, en pesos</caption>
                         <thead>
                             <tr>
-                                <th scope="col" class="col-casilla"><?php if (!$hayBloques): ?><input type="checkbox" aria-label="Seleccionar todas las vigencias" data-todas <?= $pagables ? 'checked' : 'disabled' ?>><?php endif; ?></th>
+                                <th scope="col" class="col-casilla"><?php if (!$hayBloques && $tramite === null): ?><input type="checkbox" aria-label="Seleccionar todas las vigencias" data-todas <?= $pagables ? 'checked' : 'disabled' ?>><?php endif; ?></th>
                                 <th scope="col">Estado</th>
                                 <th scope="col">Vigencia</th>
                                 <th scope="col" class="num">Avalúo</th>
@@ -302,7 +317,7 @@ Vista::abrir('Predio ' . $p['codigo_predio'], ['titulo' => 'Impuesto Predial Uni
                             <?php foreach ($vigencias as $v): ?>
                             <tr data-anio="<?= $v['anio'] ?>" data-bloque="<?= (int) ($v['bloque'] ?? -1) ?>" class="<?= $v['pagable'] ? (!empty($v['marcada']) ? 'seleccionada' : '') : 'no-pagable' ?>">
                                 <td class="col-casilla">
-                                    <?php if ($v['pagable']): ?>
+                                    <?php if ($v['pagable'] && $seleccionable): ?>
                                         <input type="checkbox" <?= !empty($v['marcada']) ? 'checked' : '' ?> aria-label="Pagar la vigencia <?= $v['anio'] ?>" data-casilla>
                                     <?php endif; ?>
                                 </td>
@@ -322,7 +337,7 @@ Vista::abrir('Predio ' . $p['codigo_predio'], ['titulo' => 'Impuesto Predial Uni
                             </tr>
                             <?php endforeach; ?>
                         </tbody>
-                        <?php if ($pagables): ?>
+                        <?php if ($seleccionable): ?>
                         <tfoot>
                             <tr><th scope="row" colspan="9" class="num">Total a pagar por las vigencias seleccionadas</th><td class="num total-fila" data-total-pie><?= pesos($totalTodo) ?></td></tr>
                         </tfoot>

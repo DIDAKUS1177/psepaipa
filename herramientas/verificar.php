@@ -45,27 +45,12 @@ paso('Conexión configurada (' . $fuente . ')', (string) config('db.base') !== '
 try {
     $version = (string) Db::valor('SELECT @@VERSION');
     paso('Conecta a SQL Server', $version !== '', strtok($version, "\n"));
+    // Con un login en español, 'AAAA-MM-DD' en un datetime se lee día-mes: por
+    // eso el portal manda siempre 'AAAA-MM-DDThh:mm:ss'.
+    paso('Idioma del login de SQL Server', true, (string) Db::valor('SELECT @@LANGUAGE'));
 } catch (Throwable $t) {
     paso('Conecta a SQL Server', false, $t->getMessage());
-    if (config('avalpay_ica')) {
-    paso('Convenio AvalPay de ICA legible', AvalPay::configurado(), (string) config('avalpay_ica'));
-}
-paso('Paz y salvo: consecutivo del año (anios.consecutivo_paz)', Db::valor('SELECT COUNT(*) FROM anios WHERE anio = ?', [(int) date('Y')]) > 0);
-paso('Paz y salvo: tabla de validación QR', Db::valor("SELECT OBJECT_ID('predios_validaciones_qr', 'U')") !== null);
-
-// Pago en línea (AvalPay): solo si está configurado.
-if (AvalPay::configurado()) {
-    $prov = PagoLinea::proveedor();
-    $ajenos = (int) Db::valor('SELECT COUNT(*) FROM generacion_pagos WHERE proveedor = ? AND (Impuesto IS NULL OR Impuesto NOT LIKE ?)', [$prov, 'Predial %']);
-    paso("generacion_pagos: proveedor $prov solo lo usa este portal", $ajenos === 0, $ajenos . ' filas ajenas');
-    paso('Banco PSE para registrar el pago', (int) config('avalpay.id_banco', 0) > 0 || Db::valor("SELECT COUNT(*) FROM bancos WHERE asobancaria = '999'") > 0);
-    $usuarioPagos = (int) Db::valor("SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('pagos') AND name = 'id_usuario'");
-    paso('Tabla pagos con las columnas esperadas', (int) Db::valor("SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('pagos') AND name IN ('numero_recibo','valor_facturado','origen','acuerdo')") === 4, $usuarioPagos ? 'con id_usuario' : 'sin id_usuario');
-    paso('AvalPay: ambiente', true, AvalPay::ambiente() . (config('avalpay_ica') ? ' — credenciales del convenio de ICA' : ''));
-    paso('AvalPay activo para', true, config('avalpay.activo', false) ? (config('avalpay.usuarios_prueba') ? 'solo usuarios de prueba' : 'todos') : 'nadie (activo = false)');
-}
-
-echo PHP_EOL . "$ok de $n" . PHP_EOL;
+    echo PHP_EOL . "$ok de $n" . PHP_EOL;
     exit(1);
 }
 
@@ -101,8 +86,11 @@ if ($predio !== null) {
 if (config('avalpay_ica')) {
     paso('Convenio AvalPay de ICA legible', AvalPay::configurado(), (string) config('avalpay_ica'));
 }
-paso('Paz y salvo: consecutivo del año (anios.consecutivo_paz)', Db::valor('SELECT COUNT(*) FROM anios WHERE anio = ?', [(int) date('Y')]) > 0);
-paso('Paz y salvo: tabla de validación QR', Db::valor("SELECT OBJECT_ID('predios_validaciones_qr', 'U')") !== null);
+paso('Paz y salvo: tabla de validación QR con sus columnas', (int) Db::valor("SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('predios_validaciones_qr')
+    AND name IN ('token','id_predio','certificado_numero','propietario_principal','fecha_expedicion','fecha_validez','is_validated','validated_at','validated_ip','validated_user_agent','estado','max_validations','validation_count')") === 13);
+paso('Paz y salvo: columna anios.consecutivo_paz', (int) Db::valor("SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('anios') AND name = 'consecutivo_paz'") === 1);
+paso('Acuerdos de pago (predios_acuerdos_pago)', Db::valor("SELECT OBJECT_ID('predios_acuerdos_pago', 'U')") !== null,
+    (int) Db::valor('SELECT COUNT(*) FROM predios_acuerdos_pago WHERE estado_acuerdo = 1') . ' activos');
 
 // Pago en línea (AvalPay): solo si está configurado.
 if (AvalPay::configurado()) {

@@ -71,7 +71,7 @@ final class Factura
             // 3. Leer lo calculado.
             $filas = Db::filas(
                 'SELECT pp.* FROM predios_pagos pp WITH (UPDLOCK)
-                  WHERE pp.id_predio = ? AND pp.ultimo_anio BETWEEN ? AND ? AND ' . Predios::SE_DEBE . ' AND ISNULL(pp.acuerdo, 0) = 0
+                  WHERE pp.id_predio = ? AND pp.ultimo_anio BETWEEN ? AND ? AND ' . Predios::SE_DEBE . ' AND ' . Predios::SIN_ACUERDO . '
                   ORDER BY pp.ultimo_anio',
                 [$idPredio, $desde, $hasta]
             );

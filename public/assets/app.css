@@ -62,7 +62,7 @@ button { font: inherit; }
 .cabecera::before { content: ""; display: block; height: 5px; background: linear-gradient(90deg, var(--oro), var(--oro-claro) 18%, var(--primario) 52%, var(--primario-oscuro)); }
 .cabecera-fila { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-block: 12px; }
 .marca { display: flex; align-items: center; gap: 16px; min-width: 0; text-decoration: none; color: inherit; }
-.marca-logo { display: block; height: clamp(50px, 3vw + 38px, 76px); width: auto; object-fit: contain; }
+.marca-logo { flex: none; display: block; height: clamp(50px, 3vw + 38px, 76px); width: auto; object-fit: contain; }
 .marca-texto { display: none; flex-direction: column; padding-left: 16px; border-left: 1px solid var(--linea-fuerte); line-height: 1.25; }
 .marca-texto strong { font: 700 15px var(--sans); color: var(--tinta); }
 .marca-texto span { font-size: 13.5px; color: var(--tenue); }
@@ -216,7 +216,7 @@ button { font: inherit; }
 .entrada-fila { display: grid; gap: clamp(28px, 4vw, 64px); align-items: center; padding-block: clamp(32px, 5vw, 72px); }
 @media (min-width: 960px) { .entrada-fila { grid-template-columns: 1.05fr minmax(400px, .95fr); } }
 .entrada-texto h1 { margin: 0 0 16px; font: 700 clamp(38px, 3.6vw + 18px, 70px)/1.02 var(--serif); letter-spacing: -.02em; max-width: 13ch; }
-.entrada-texto h1 em { display: block; font-style: italic; font-weight: 600; color: var(--oro-claro); }
+.entrada-texto h1 em { display: block; font-style: italic; font-weight: 600; color: #ffe9a8; }
 .bajada { margin: 0 0 26px; max-width: 46ch; font-size: clamp(16px, .5vw + 13px, 19px); color: rgba(255, 255, 255, .92); }
 .beneficios { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; max-width: 46ch; }
 .beneficios li { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-radius: 14px; background: rgba(255, 255, 255, .08); border: 1px solid rgba(255, 255, 255, .16); backdrop-filter: blur(4px); }
@@ -274,13 +274,8 @@ button { font: inherit; }
 .resumen-item dd { margin: 2px 0 0; font: 700 24px/1.2 var(--sans); font-variant-numeric: tabular-nums; }
 .resumen-alerta dd { color: var(--pendiente); }
 .resumen-ok dd { color: var(--ok); }
-.resumen-total { background: var(--primario); border-color: var(--primario); }
-.resumen-total dt { color: rgba(255, 255, 255, .8); }
-.resumen-total dd { color: #fff; }
-.resumen-nota { text-transform: none; letter-spacing: 0; font-weight: 400; }
 @media (max-width: 600px) {
     .resumen { grid-template-columns: 1fr 1fr; }
-    .resumen-total { grid-column: 1 / -1; }
 }
 .filtro-predios { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
 .filtro-chips { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -493,7 +488,7 @@ button { font: inherit; }
 .pie-marca img { height: 56px; width: auto; }
 .pie-marca strong { display: block; color: #fff; font: 700 18px var(--serif); margin-bottom: 2px; }
 .pie-marca span { display: block; font-size: 13px; color: rgba(255, 255, 255, .78); }
-.pie-titulo { margin: 0 0 10px; font: 700 13px var(--sans); letter-spacing: .12em; text-transform: uppercase; color: var(--oro-claro); }
+.pie-titulo { margin: 0 0 10px; font: 700 13px var(--sans); letter-spacing: .12em; text-transform: uppercase; color: #ffe9a8; }
 .pie-contacto, .pie-enlaces { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .pie-contacto li { display: flex; align-items: flex-start; gap: 8px; }
 .pie-contacto svg { width: 16px; height: 16px; margin-top: 2px; color: var(--oro-claro); }
@@ -517,7 +512,7 @@ button { font: inherit; }
 .reintentar { margin-top: 10px; }
 .menu-lista [role="menuitem"]:focus-visible { outline: 2px solid var(--primario-oscuro); outline-offset: -2px; }
 @media (max-width: 640px) {
-    .menu-fila { flex-wrap: wrap; }
+    .menu-fila { flex-wrap: nowrap; }
     .menu a { padding: 10px 12px; }
     .pestanas-linea { flex-wrap: wrap; }
     .pestanas-linea button, .pestanas-inicio .pestanas a { flex: 1 1 auto; padding-inline: 10px; font-size: 14px; }
@@ -572,3 +567,19 @@ button { font: inherit; }
 .monto-oculto { letter-spacing: .08em; color: var(--tenue); }
 .paz-form { display: grid; gap: 12px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--linea); }
 .paz-form small { font-weight: 400; color: var(--tenue); }
+
+/* ---------- Revisión 2026-10-13 ---------- */
+.texto-corto { display: none; }
+@media (max-width: 640px) {
+    .menu .texto-largo { display: none; }
+    .menu .texto-corto { display: inline; }
+}
+@media (max-width: 400px) {
+    .boton-registrarse { display: none; }
+}
+@media (max-width: 959px) {
+    /* La foto de la portada se aclara con el verde de ICA: más velo detrás del texto. */
+    .entrada::before { background: linear-gradient(180deg, rgba(var(--profundo-rgb), .9) 0%, rgba(var(--profundo-rgb), .84) 100%); }
+}
+.vacio-accion { margin-top: 14px; }
+.aviso-conciliar { margin: 0 0 14px; font-size: 14px; }

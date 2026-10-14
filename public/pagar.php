@@ -40,6 +40,17 @@ try {
     if ($tramite !== null) {
         redirigir(PagoLinea::urlRetorno((int) $tramite['IdGeneraPado']));
     }
+    if (PagoLinea::porConciliar($id) !== null) {
+        throw new AvisoUsuario('Este predio tiene un pago en línea aprobado que la Alcaldía está revisando. Antes de volver a pagar, comunícate con la Dirección de Impuestos.');
+    }
+    if (!AvalPay::configurado()) {
+        throw new AvisoUsuario('El pago en línea no está disponible en este momento. Puedes pagar en el banco con la factura.');
+    }
+    // En el ambiente de pruebas de AvalPay solo pagan los usuarios de prueba
+    // (y el pago no se registra: PagoLinea lo deja en PRUEBAS).
+    if (AvalPay::esPruebas() && !config('avalpay.usuarios_prueba')) {
+        throw new AvisoUsuario('El pago en línea no está disponible en este momento. Puedes pagar en el banco con la factura.');
+    }
     $anio = (int) date('Y');
     if ($desde < 1900 || $hasta > $anio || $desde > $hasta) {
         throw new AvisoUsuario('Las vigencias elegidas no son válidas.');
@@ -52,7 +63,9 @@ try {
         if ($valor === (int) ($_POST['valor'] ?? -1)) {
             $intento = PagoLinea::crearIntento($id, $f['numero'], $valor, (string) $u['documento'], $desde, $hasta);
             if ($intento === null) {
-                redirigir($volver);
+                // Otra pestaña abrió el pago un instante antes: a ese.
+                $otro = PagoLinea::enTramite($id);
+                redirigir($otro !== null ? PagoLinea::urlRetorno((int) $otro['IdGeneraPado']) : $volver);
             }
             $vigencias = $desde === $hasta ? (string) $desde : $desde . '-' . $hasta;
             try {
@@ -68,6 +81,9 @@ try {
                         ['keyword' => 'Vigencias', 'value' => $vigencias, 'displayOn' => 'both'],
                     ]
                 );
+                if (!AvalPay::urlDePagoValida($url)) {
+                    throw new RuntimeException('enlace de pago inesperado: ' . parse_url($url, PHP_URL_HOST));
+                }
             } catch (Throwable $t) {
                 PagoLinea::fallo($intento, $t->getMessage());
                 error_log('[psepaipa pago] crear sesión, intento ' . $intento . ': ' . $t->getMessage());

@@ -62,7 +62,7 @@ $texto .= '</p>';
 $pdf->writeHTML($texto, true, false, true, false, '');
 
 // Datos del predio (propietarios ocultos, como en todo el portal).
-PdfPredial::predio($pdf, $p);
+PdfPredial::predio($pdf, $p, 5);
 $pdf->SetY($pdf->GetY() + 2);
 $pdf->SetFont('helvetica', '', 8.5);
 $pdf->Cell(PdfPredial::ANCHO, 5, 'Avalúo vigente: ' . PdfPredial::pesos($ultimo['avaluo'] ?? $p['avaluo']) . '    Año del avalúo: ' . ($ultimo['ultimo_anio'] ?? date('Y')), 0, 1, 'L');
@@ -79,8 +79,11 @@ $cuerpo = '<p style="font-size:9.5px;line-height:1.5;">Expedido el ' . $h($fecha
 $pdf->SetY($pdf->GetY() + 3);
 $pdf->writeHTML($cuerpo, true, false, true, false, '');
 
-// Firma y código QR.
-$y = max($pdf->GetY() + 10, 190);
+// Firma y código QR (en una hoja nueva si el texto ya llegó muy abajo).
+if ($pdf->GetY() > 215) {
+    $pdf->AddPage();
+}
+$y = max($pdf->GetY() + 22, 190);
 $firma = (string) config('paz_salvo.firma', '');
 if ($firma !== '' && is_file($firma)) {
     $pdf->Image($firma, 30, $y - 18, 50, 0);
