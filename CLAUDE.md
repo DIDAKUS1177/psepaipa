@@ -126,8 +126,8 @@ Misma integración de ICA (`src/AvalPay.php`, de `business/class.placetopay.php`
   año en curso pagado y sin pago en curso; el mismo predio el mismo día repite el certificado.
   Propietario oculto. Botón en «Valor a pagar» y en «Sin saldos pendientes».
 - La pestaña «Estado financiero» se llama **«Estado de cuenta»**.
-- **PSE con la cuenta de ICA**: `avalpay_ica` = ruta del `config.municipio.php` de ICA (en Paipa:
-  `industria-comercio-paipa.erpsoftsas.com/App/Firma_digital/erpsoftsas/`); se lee
+- **PSE con la cuenta de ICA**: `avalpay_ica` = ruta del `config.municipio.php` de ICA (la del
+  servidor está solo en su `config.local.php`); se lee
   sin ejecutarlo (constantes DB_PROD_* y PLACETOPAY_*, y `conf_parametros` PASARELA_*).
   Con esa cuenta los avisos de AvalPay llegan a la URL de ICA: aquí confirman el retorno y la
   tarea. Los puntos de pago de la factura ya coinciden con la liquidación oficial de Paipa.
