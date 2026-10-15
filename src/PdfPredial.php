@@ -15,11 +15,11 @@ final class PdfPredial
 {
     const ANCHO = 215.9 - 24; // carta menos márgenes de 12 mm
 
-    public static function crear(string $titulo): TCPDF
+    public static function crear(string $titulo, string $papel = 'LETTER'): TCPDF
     {
         require_once RAIZ . '/lib/tcpdf/tcpdf.php';
         // Subclase solo para quitar el enlace "Powered by TCPDF" del final.
-        $pdf = new class('P', 'mm', 'LETTER', true, 'UTF-8', false) extends TCPDF {
+        $pdf = new class('P', 'mm', $papel, true, 'UTF-8', false) extends TCPDF {
             public function __construct(...$a)
             {
                 parent::__construct(...$a);

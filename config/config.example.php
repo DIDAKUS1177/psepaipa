@@ -79,7 +79,10 @@ return [
     'paz_salvo' => [
         'dependencia'    => 'Tesorería Municipal',
         'cargo'          => 'SECRETARIO(A) DE HACIENDA MUNICIPAL',
-        'firma'          => '',   // ruta de la imagen de la firma (opcional)
+        'firma'          => '',   // ruta de la firma (JPEG, fuera de public/ y del repositorio)
+        'elaboro'        => 'Portal de pago en línea',
+        'correo'         => 'tesoreria@paipa-boyaca.gov.co',
+        'direccion'      => 'Carrera 22 # 25 - 14',
         'valor'          => 0,    // costo del certificado; 0 = no se imprime
         'nota'           => 'Actualmente el municipio de Paipa no tiene adoptada la contribución de valorización para predios ubicados dentro de su jurisdicción.',
         'url_validacion' => '',   // vacío = validar.php de este portal (+ token)

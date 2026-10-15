@@ -83,8 +83,9 @@ Las de `usuarios_pse`, las mismas del PSE anterior, para que nadie se reinscriba
 contraseña es MD5 sin sal en hexadecimal MAYÚSCULA, igual que el sistema anterior: débil,
 pero cambiarla dejaría sin entrar a quien siga usando el viejo mientras conviven.
 Pendiente: migrar a `password_hash` cuando se retire el viejo. Bloqueo de 5 minutos tras
-5 intentos fallidos (en la sesión). A quien no es propietario se le ocultan el nombre y
-el documento del dueño (pantalla y PDF), pero puede pagar.
+5 intentos fallidos (en la sesión). En pantalla, la factura y el estado de cuenta el nombre
+y el documento del dueño van ocultos; el paz y salvo los lleva completos, como el oficial
+(lo pidió la Tesorería el 2026-10-14).
 
 ## Desarrollo local
 
@@ -123,8 +124,15 @@ Misma integración de ICA (`src/AvalPay.php`, de `business/class.placetopay.php`
 - **Paz y salvo** (`paz-y-salvo.php`, `src/PazYSalvo.php`): formato de `pazPDF_pai`, número
   del consecutivo oficial `anios.consecutivo_paz`, QR en `predios_validaciones_qr` (tabla del
   oficial: 5 consultas, válido al 31/12) verificable en `validar.php`. Solo sin deudas, con el
-  año en curso pagado y sin pago en curso; el mismo predio el mismo día repite el certificado.
-  Propietario oculto. Botón en «Valor a pagar» y en «Sin saldos pendientes».
+  año en curso pagado y sin pago en curso; el mismo usuario y predio el mismo día repite el
+  certificado. Botón en «Valor a pagar» y en «Sin saldos pendientes».
+- **Paz y salvo igual al oficial** (muestra de la Tesorería, 2026-10-14): A4, encabezado con
+  escudo y QR, "LA TESORERÍA MUNICIPAL DE PAIPA CERTIFICA", predio, propietarios completos
+  (hasta 5), "Válido hasta / Valor 0.00 / Elaboró" y la **firma** del Secretario de Hacienda.
+  La firma es un JPEG que NO va en el repositorio (público): vive en el servidor fuera de
+  `public/` y de las versiones, y `paz_salvo.firma` apunta a ella. `PazYSalvo::pdf()` dibuja;
+  `pruebas/datos/probar_paz_pdf.php` lo prueba con datos inventados (1, 5 y 9 propietarios).
+  `verificar.php pago` dice en pocas líneas el ambiente de AvalPay y si la firma está.
 - La pestaña «Estado financiero» se llama **«Estado de cuenta»**.
 - **PSE con la cuenta de ICA**: `avalpay_ica` = ruta del `config.municipio.php` de ICA (la del
   servidor está solo en su `config.local.php`); se lee
@@ -151,8 +159,6 @@ Misma integración de ICA (`src/AvalPay.php`, de `business/class.placetopay.php`
 
 ## Pendiente
 
-- AvalPay: hecho y probado contra un simulador local (ver «Pago en línea»); falta poner las
-  credenciales en el `config.local.php` del servidor, registrar la URL de aviso y la tarea.
 - Recuperar la contraseña por correo (hoy remite a la Dirección de Impuestos).
 - Probar contra una copia de la base de Paipa antes de publicar (las cifras de Guateque
   traen intereses en 0).
@@ -187,7 +193,8 @@ Misma integración de ICA (`src/AvalPay.php`, de `business/class.placetopay.php`
   renumerar se libera el viejo. Límites: 10 facturas nuevas por usuario y 4 por predio al
   día, y freno global de 300 por hora (consulta a la base).
 - **Identidad**: la inscripción no prueba que el documento sea de quien se inscribe (igual
-  que el PSE viejo), así que nombre y documento del propietario van ocultos SIEMPRE. Un
+  que el PSE viejo), así que nombre y documento del propietario van ocultos (salvo en el paz
+  y salvo, que la Tesorería pidió igual al oficial). Un
   predio ajeno solo se abre después de buscarlo (`Predios::permitido`). Pendiente si el
   cliente lo quiere: verificar la propiedad (p. ej. con el número de la última factura).
 - **Huecos**: predios con años no seguidos se pagan por bloques (`data-bloque`); al abrir se

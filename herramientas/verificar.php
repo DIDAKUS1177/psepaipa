@@ -32,6 +32,18 @@ try {
     exit(1);
 }
 
+// "verificar.php pago": solo el pago en línea, en pocas líneas (Plesk corta la
+// salida larga y el ambiente de AvalPay quedaba fuera de lo visible).
+if (($argv[1] ?? '') === 'pago') {
+    paso('AvalPay configurado', AvalPay::configurado(), AvalPay::ambiente() . (config('avalpay_ica') ? ' — cuenta de ICA' : ''));
+    $prueba = (array) config('avalpay.usuarios_prueba', []);
+    paso('Pago en línea', true, !config('avalpay.activo', false) ? 'APAGADO' : ($prueba ? 'solo ' . count($prueba) . ' usuario(s) de prueba' : 'activo para todos'));
+    $firma = (string) config('paz_salvo.firma', '');
+    $tipo = is_file($firma) ? (getimagesize($firma)['mime'] ?? '') : '';
+    paso('Firma del paz y salvo (JPEG)', $tipo === 'image/jpeg', $firma === '' ? 'sin configurar' : (is_file($firma) ? $tipo : 'no existe el archivo'));
+    exit($ok === $n ? 0 : 1);
+}
+
 echo 'PHP ' . PHP_VERSION . PHP_EOL;
 paso('Extensión pdo_sqlsrv', extension_loaded('pdo_sqlsrv'));
 $fuente = config('db_appsettings') ? 'appsettings.json de la API anterior' : 'config.local.php';
