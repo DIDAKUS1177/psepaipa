@@ -228,13 +228,18 @@ Vista::abrir('Predio ' . $p['codigo_predio'], ['titulo' => 'Impuesto Predial Uni
                         <div class="menu-lista menu-derecha" role="menu" hidden>
                             <?php if ($pagoEnLinea): ?>
                             <button type="submit" role="menuitem" formaction="pagar.php" formtarget="_self" data-requiere-cotizacion data-pago-linea>
-                                <?= Vista::icono('pagar') ?><span><strong>Pagar en línea (PSE)</strong><small>Débito desde tu cuenta bancaria.</small></span>
+                                <?= Vista::icono('pagar') ?><span><strong>PSE · Banco de Bogotá</strong><small>Débito desde tu cuenta bancaria.</small></span>
                             </button>
                             <?php else: ?>
                             <button type="button" role="menuitem" disabled>
-                                <?= Vista::icono('pagar') ?><span><strong>Pagar en línea (PSE)</strong><small>Muy pronto en este portal.</small></span>
+                                <?= Vista::icono('pagar') ?><span><strong>PSE · Banco de Bogotá</strong><small>Muy pronto en este portal.</small></span>
                             </button>
                             <?php endif; ?>
+                            <?php /* Segundo botón pedido por Paipa (2026-10-21): Bancolombia con
+                                     1cero1pay. Solo se ve; se habilita cuando esté la integración. */ ?>
+                            <button type="button" role="menuitem" disabled aria-disabled="true">
+                                <?= Vista::icono('pagar') ?><span><strong>Bancolombia (1cero1pay)</strong><small>Próximamente.</small></span>
+                            </button>
                             <button type="submit" role="menuitem" formaction="factura.php" data-requiere-cotizacion>
                                 <?= Vista::icono('banco') ?><span><strong>Pagar en banco</strong><small>Descarga la factura con código de barras.</small></span>
                             </button>
