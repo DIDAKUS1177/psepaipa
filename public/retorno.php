@@ -14,7 +14,7 @@ require __DIR__ . '/../src/arranque.php';
 $id = (int) ($_GET['i'] ?? 0);
 $firma = (string) ($_GET['t'] ?? '');
 $intento = null;
-if ($id > 0 && AvalPay::configurado() && hash_equals(AvalPay::firmaRetorno($id), $firma)) {
+if (PagoLinea::firmaValida($id, $firma)) {
     try {
         $intento = PagoLinea::intento($id);
     } catch (Throwable $t) {
@@ -53,7 +53,7 @@ switch (true) {
         break;
     case $estado === 'PRUEBAS':
         $clase = 'alerta'; $titulo = 'Pago de prueba';
-        $mensaje = 'El pago se hizo en el ambiente de pruebas de AvalPay: no es un pago real y no se registra.';
+        $mensaje = 'El pago se hizo en el ambiente de pruebas de la pasarela: no es un pago real y no se registra.';
         break;
     case $estado === 'APPROVED':
         $clase = 'ok'; $titulo = 'Pago aprobado';

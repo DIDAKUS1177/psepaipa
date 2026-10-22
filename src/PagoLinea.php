@@ -1,7 +1,10 @@
 <?php
 /**
- * Pagos en línea del predial (AvalPay): los intentos y el registro del pago
- * en la base oficial.
+ * Pagos en línea del predial: los intentos y el registro del pago en la base
+ * oficial. Dos pasarelas (2026-10-21): AvalPay (PSE, Banco de Bogotá) y
+ * 1cero1pay (Bancolombia, src/UnoCeroUno.php). Cada intento lleva el
+ * proveedor de su pasarela; un predio no tiene dos pagos en curso aunque sean
+ * de pasarelas distintas.
  *
  * Intentos: tabla generacion_pagos, la misma que usaba el PSE anterior (una
  * fila por intento). No se crean tablas nuevas. Columnas que se usan:
@@ -33,9 +36,33 @@ final class PagoLinea
     const DIAS_PENDIENTE    = 3;    // PSE puede tardar en confirmar
     const FINALES_SIN_PAGO  = ['REJECTED', 'EXPIRED', 'FAILED', 'DECLINED', 'ERROR'];
 
+    /** Proveedor de AvalPay en generacion_pagos. */
     public static function proveedor(): int
     {
         return (int) config('avalpay.proveedor', 5);
+    }
+
+    /** Los proveedores de este portal (AvalPay y 1cero1pay). */
+    public static function proveedores(): array
+    {
+        return array_values(array_unique([self::proveedor(), UnoCeroUno::proveedor()]));
+    }
+
+    public static function esUnoCeroUno(array $i): bool
+    {
+        return (int) $i['proveedor'] === UnoCeroUno::proveedor() && UnoCeroUno::proveedor() !== self::proveedor();
+    }
+
+    /** "IN (?, ?)" de los proveedores, para las consultas. */
+    private static function enProveedores(): string
+    {
+        return 'proveedor IN (' . implode(', ', array_fill(0, count(self::proveedores()), '?')) . ')';
+    }
+
+    /** ¿La pasarela del intento está configurada? */
+    public static function pasarelaLista(array $i): bool
+    {
+        return self::esUnoCeroUno($i) ? UnoCeroUno::configurado() : AvalPay::configurado();
     }
 
     /**
@@ -50,11 +77,11 @@ final class PagoLinea
     {
         return Db::fila(
             "SELECT TOP 1 * FROM generacion_pagos
-              WHERE proveedor = ? AND referencia = ? AND Activo = 1
+              WHERE " . self::enProveedores() . " AND referencia = ? AND Activo = 1
                 AND (EstadoTransaccion = 'APPROVED'
                      OR (created_at >= ? AND (ISNULL(IDTransaccion, '') <> '' OR created_at >= ?)))
               ORDER BY IdGeneraPado DESC",
-            [self::proveedor(), (string) $idPredio,
+            [...self::proveedores(), (string) $idPredio,
              date('Y-m-d\TH:i:s', time() - self::DIAS_PENDIENTE * 86400),
              date('Y-m-d\TH:i:s', time() - self::MINUTOS_COMENZADA * 60)]
         );
@@ -69,9 +96,9 @@ final class PagoLinea
     {
         return Db::fila(
             "SELECT TOP 1 * FROM generacion_pagos
-              WHERE proveedor = ? AND referencia = ? AND EstadoTransaccion = 'REVISAR' AND created_at >= ?
+              WHERE " . self::enProveedores() . " AND referencia = ? AND EstadoTransaccion = 'REVISAR' AND created_at >= ?
               ORDER BY IdGeneraPado DESC",
-            [self::proveedor(), (string) $idPredio, date('Y-m-d\TH:i:s', time() - 60 * 86400)]
+            [...self::proveedores(), (string) $idPredio, date('Y-m-d\TH:i:s', time() - 60 * 86400)]
         );
     }
 
@@ -84,13 +111,13 @@ final class PagoLinea
     {
         $abiertos = Db::filas(
             "SELECT * FROM generacion_pagos
-              WHERE proveedor = ? AND referencia = ? AND Activo = 1 AND ISNULL(IDTransaccion, '') <> '' AND created_at < ?",
-            [self::proveedor(), (string) $idPredio, date('Y-m-d\TH:i:s', time() - self::MINUTOS_COMENZADA * 60)]
+              WHERE " . self::enProveedores() . " AND referencia = ? AND Activo = 1 AND ISNULL(IDTransaccion, '') <> '' AND created_at < ?",
+            [...self::proveedores(), (string) $idPredio, date('Y-m-d\TH:i:s', time() - self::MINUTOS_COMENZADA * 60)]
         );
-        if (!$abiertos || !AvalPay::configurado()) {
-            return;
-        }
         foreach ($abiertos as $i) {
+            if (!self::pasarelaLista($i)) {
+                continue;
+            }
             try {
                 self::actualizar($i);
             } catch (Throwable $t) {
@@ -101,7 +128,7 @@ final class PagoLinea
 
     public static function intento(int $id): ?array
     {
-        return Db::fila('SELECT * FROM generacion_pagos WHERE IdGeneraPado = ? AND proveedor = ?', [$id, self::proveedor()]);
+        return Db::fila('SELECT * FROM generacion_pagos WHERE IdGeneraPado = ? AND ' . self::enProveedores(), [$id, ...self::proveedores()]);
     }
 
     public static function porSesion(string $requestId): ?array
@@ -132,7 +159,7 @@ final class PagoLinea
      * factura sigue cubriendo el rango por el mismo valor. Devuelve el id o
      * null si ya hay un pago en curso. Lanza AvisoUsuario si la factura cambió.
      */
-    public static function crearIntento(int $idPredio, string $factura, int $valor, string $documento, int $desde, int $hasta): ?int
+    public static function crearIntento(int $idPredio, string $factura, int $valor, string $documento, int $desde, int $hasta, bool $unoCeroUno = false): ?int
     {
         $pdo = Db::pdo();
         $pdo->beginTransaction();
@@ -156,9 +183,10 @@ final class PagoLinea
                     (codigo_entidad, factura, fuente_pago, ID_impuesto, propietario_identificacion, referencia,
                      tipo_implementacion, total, created_at, Impuesto, EstadoTransaccion, MedioPago, Activo, proveedor)
                  OUTPUT INSERTED.IdGeneraPado
-                 VALUES (?, ?, 1, 1, ?, ?, 7, ?, ?, ?, 'COMENZADA', 'PSE', 1, ?)",
+                 VALUES (?, ?, 1, 1, ?, ?, 7, ?, ?, ?, 'COMENZADA', ?, 1, ?)",
                 [(string) (Factura::ean() ?? ''), $factura, $documento, (string) $idPredio, $valor,
-                 date('Y-m-d\TH:i:s'), 'Predial ' . ($desde === $hasta ? $desde : $desde . '-' . $hasta), self::proveedor()]
+                 date('Y-m-d\TH:i:s'), 'Predial ' . ($desde === $hasta ? $desde : $desde . '-' . $hasta),
+                 $unoCeroUno ? UnoCeroUno::MEDIO : 'PSE', $unoCeroUno ? UnoCeroUno::proveedor() : self::proveedor()]
             );
             $pdo->commit();
             return $id;
@@ -199,6 +227,12 @@ final class PagoLinea
     {
         if ((int) $i['Activo'] !== 1 || trim((string) $i['IDTransaccion']) === '') {
             return ['intento' => $i, 'info' => null];
+        }
+        if (self::esUnoCeroUno($i)) {
+            // 1cero1pay se consulta por la factura (como el "Validar pago" del viejo).
+            $info = UnoCeroUno::interpretar(UnoCeroUno::consultar(trim((string) $i['factura'])), trim((string) $i['IDTransaccion']));
+            self::aplicar($i, $info);
+            return ['intento' => self::intento((int) $i['IdGeneraPado']), 'info' => $info];
         }
         $r = AvalPay::consultar((string) $i['IDTransaccion']);
         if (!self::sesionDelIntento($r, $i)) {
@@ -276,9 +310,11 @@ final class PagoLinea
                 error_log('[psepaipa pago] intento ' . $id . ' ' . $estado . ': ' . $mensaje);
             };
 
-            // Un APPROVED del ambiente de pruebas de AvalPay no es plata real.
-            if (AvalPay::esPruebas() && !config('avalpay.registrar_pruebas', false)) {
-                $marca('PRUEBAS', 'Aprobado en el ambiente de pruebas de AvalPay: no se registra');
+            // Un APPROVED del ambiente de pruebas de la pasarela no es plata real.
+            $uno = self::esUnoCeroUno($i);
+            if ($uno ? (UnoCeroUno::esPruebas() && !config('unocerouno.registrar_pruebas', false))
+                     : (AvalPay::esPruebas() && !config('avalpay.registrar_pruebas', false))) {
+                $marca('PRUEBAS', 'Aprobado en el ambiente de pruebas de ' . ($uno ? '1cero1pay' : 'AvalPay') . ': no se registra');
                 $pdo->commit();
                 return;
             }
@@ -310,7 +346,7 @@ final class PagoLinea
                 return;
             }
 
-            $banco = self::idBancoPse();
+            $banco = self::idBancoPse($uno);
             $ultima = end($filas);
             $columnas = ['fecha_pago', 'numero_recibo', 'id_predio', 'valor_facturado', 'anio_pago', 'fecha_factura',
                          'id_banco_factura', 'id_banco_archivo', 'origen', 'acuerdo', 'created_at', 'updated_at'];
@@ -351,10 +387,10 @@ final class PagoLinea
         }
     }
 
-    /** bancos.id del recaudo PSE (asobancaria 999, o el del config). */
-    private static function idBancoPse(): int
+    /** bancos.id del recaudo en línea (asobancaria 999, o el del config de cada pasarela). */
+    private static function idBancoPse(bool $unoCeroUno = false): int
     {
-        $c = (int) config('avalpay.id_banco', 0);
+        $c = (int) config($unoCeroUno ? 'unocerouno.id_banco' : 'avalpay.id_banco', 0);
         if ($c > 0) {
             return $c;
         }
@@ -384,9 +420,26 @@ final class PagoLinea
         }
     }
 
-    /** Enlace de vuelta firmado (sirve aunque la sesión del portal haya vencido). */
+    /**
+     * Enlace de vuelta firmado (sirve aunque la sesión del portal haya vencido).
+     * Con AvalPay, la misma firma de siempre (los enlaces ya enviados siguen
+     * valiendo); sin AvalPay, con la clave de 1cero1pay.
+     */
     public static function urlRetorno(int $id): string
     {
-        return urlPublica() . '/retorno.php?i=' . $id . '&t=' . AvalPay::firmaRetorno($id);
+        return urlPublica() . '/retorno.php?i=' . $id . '&t=' . self::firmaRetorno($id);
+    }
+
+    public static function firmaRetorno(int $id): string
+    {
+        if (AvalPay::configurado()) {
+            return AvalPay::firmaRetorno($id);
+        }
+        return substr(hash_hmac('sha256', 'retorno|' . $id, UnoCeroUno::secreto()), 0, 32);
+    }
+
+    public static function firmaValida(int $id, string $firma): bool
+    {
+        return $id > 0 && (AvalPay::configurado() || UnoCeroUno::configurado()) && hash_equals(self::firmaRetorno($id), $firma);
     }
 }

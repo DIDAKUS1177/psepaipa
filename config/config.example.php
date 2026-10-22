@@ -75,6 +75,26 @@ return [
     // del banco y con la tarea herramientas/verificar-pagos.php.
     // 'avalpay_ica' => '',
 
+    // Segundo botón: Bancolombia con 1cero1pay (2026-10-21), la misma API que
+    // usaba el PSE anterior. Sin url, usuario, clave, codigo_entidad e
+    // id_impuesto el botón se ve deshabilitado ("Próximamente"). No hay aviso:
+    // el pago se confirma al ver su estado y con herramientas/verificar-pagos.php.
+    // 'unocerouno' => [
+    //     'url'                 => 'https://www.1cero1pay.com/ApiPayment/api',
+    //     'usuario'             => '',
+    //     'clave'               => '',
+    //     'codigo_entidad'      => '',   // CodigoEntidad de Paipa en 1cero1pay
+    //     'id_impuesto'         => '',   // IDImpuesto del predial
+    //     'fuente_pago'         => '1',
+    //     'tipo_implementacion' => '1',
+    //     'tipos_documento'     => [],   // id_tipo_identificacion => código de 1cero1pay
+    //     'activo'              => true,
+    //     'pruebas'             => false, // true con credenciales de pruebas: no registra pagos
+    //     'usuarios_prueba'     => [],   // documentos; vacío = todos ven el botón
+    //     'proveedor'           => 6,    // generacion_pagos.proveedor (distinto del PSE viejo, que era 1)
+    //     'id_banco'            => 0,    // bancos.id para registrar el pago; 0 = asobancaria 999
+    // ],
+
     // Paz y salvo (formato del sistema oficial de Paipa, pazPDF_pai).
     'paz_salvo' => [
         'dependencia'    => 'Tesorería Municipal',
