@@ -240,11 +240,11 @@ Vista::abrir('Predio ' . $p['codigo_predio'], ['titulo' => 'Impuesto Predial Uni
                                      1cero1pay. Activo cuando 'unocerouno' está en config.local.php. */ ?>
                             <?php if ($pagoUno): ?>
                             <button type="submit" role="menuitem" formaction="pagar.php" formtarget="_self" name="pasarela" value="101" data-requiere-cotizacion data-pago-linea>
-                                <?= Vista::icono('pagar') ?><span><strong>Bancolombia (1cero1pay)</strong><small>Paga con tu cuenta Bancolombia.</small></span>
+                                <?= Vista::icono('pagar') ?><span><strong>PSE · Bancolombia</strong><small>Paga con tu cuenta Bancolombia.</small></span>
                             </button>
                             <?php else: ?>
                             <button type="button" role="menuitem" disabled aria-disabled="true">
-                                <?= Vista::icono('pagar') ?><span><strong>Bancolombia (1cero1pay)</strong><small>Próximamente.</small></span>
+                                <?= Vista::icono('pagar') ?><span><strong>PSE · Bancolombia</strong><small>Próximamente.</small></span>
                             </button>
                             <?php endif; ?>
                             <button type="submit" role="menuitem" formaction="factura.php" data-requiere-cotizacion>

@@ -258,7 +258,7 @@ final class UnoCeroUno
             'estado'       => $estado,
             'aprobado'     => $estado === 'APPROVED',
             'sinIntento'   => $tx === null,
-            'banco'        => (string) ($tx['MedioPago'] ?? 'Bancolombia (1cero1pay)'),
+            'banco'        => (string) ($tx['MedioPago'] ?? 'Bancolombia'),
             'autorizacion' => (string) ($tx['CUS'] ?? ''),
             'fecha'        => (string) ($tx['FechaTransaccion'] ?? date('c')),
             'valor'        => is_numeric($valor) ? (int) round((float) $valor) : null,

@@ -139,7 +139,7 @@ Vista::abrir('Pagar en línea', ['titulo' => 'Pago en línea', 'volver' => $volv
             <div><dt>Referencia catastral</dt><dd class="mono"><?= e($p['codigo_predio']) ?></dd></div>
             <div><dt>Dirección</dt><dd><?= e($p['direccion'] ?? '') ?></dd></div>
             <div><dt>Vigencias</dt><dd><?= $desde === $hasta ? e($desde) : e($desde . ' a ' . $hasta) ?></dd></div>
-            <div><dt>Medio de pago</dt><dd><?= $uno ? 'Bancolombia (1cero1pay)' : 'PSE, débito desde tu cuenta bancaria (Banco de Bogotá)' ?></dd></div>
+            <div><dt>Medio de pago</dt><dd><?= $uno ? 'PSE, débito desde tu cuenta Bancolombia' : 'PSE, débito desde tu cuenta bancaria (Banco de Bogotá)' ?></dd></div>
             <div class="pago-total"><dt>Total a pagar</dt><dd><?= pesos($total) ?> <small>COP</small></dd></div>
         </dl>
         <p class="valor-nota"><?= Vista::icono('info') ?><span>Valor liquidado hoy, <?= e(fechaCorta(hoy())) ?>. El pago queda registrado en cuanto el banco lo confirme; si se demora, no inicies otro.</span></p>
