@@ -41,6 +41,10 @@ if (($argv[1] ?? '') === 'pago') {
     $firma = (string) config('paz_salvo.firma', '');
     $tipo = is_file($firma) ? (getimagesize($firma)['mime'] ?? '') : '';
     paso('Firma del paz y salvo (JPEG)', $tipo === 'image/jpeg', $firma === '' ? 'sin configurar' : (is_file($firma) ? $tipo : 'no existe el archivo'));
+    // 1cero1pay: lo que encontró (config o base del sistema viejo), sin usuario ni clave.
+    $r101 = UnoCeroUno::resumen();
+    paso('1cero1pay (Bancolombia)', true, (UnoCeroUno::configurado() ? 'listo' : 'incompleto') . (config('unocerouno.activo', false) ? ', activo' : ', APAGADO') . ' — '
+        . implode(', ', array_map(fn($k, $v) => "$k: $v", array_keys($r101), $r101)));
     exit($ok === $n ? 0 : 1);
 }
 

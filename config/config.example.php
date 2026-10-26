@@ -76,18 +76,25 @@ return [
     // 'avalpay_ica' => '',
 
     // Segundo botón: Bancolombia con 1cero1pay (2026-10-21), la misma API que
-    // usaba el PSE anterior. Sin url, usuario, clave, codigo_entidad e
-    // id_impuesto el botón se ve deshabilitado ("Próximamente"). No hay aviso:
-    // el pago se confirma al ver su estado y con herramientas/verificar-pagos.php.
+    // usaba el PSE anterior y con SUS MISMAS credenciales (2026-10-26): con
+    // 'desde_bd' (por defecto) usuario, clave y entidad salen de
+    // conf_medios_pagos de la base de predial, y fuente de pago, impuesto y
+    // tipo de implementación del último intento del sistema viejo en
+    // generacion_pagos. Lo que se escriba aquí manda sobre la base. Si falta
+    // algo, el botón se ve deshabilitado ("Próximamente"); "verificar.php pago"
+    // dice qué encontró. No hay aviso: el pago se confirma al ver su estado y
+    // con herramientas/verificar-pagos.php.
     // 'unocerouno' => [
     //     'url'                 => 'https://www.1cero1pay.com/ApiPayment/api',
-    //     'usuario'             => '',
+    //     'desde_bd'            => true,  // leer lo que falte de la base del sistema viejo
+    //     'id_medio'            => 1,     // fila de conf_medios_pagos
+    //     'usuario'             => '',    // vacío = el de la base
     //     'clave'               => '',
-    //     'codigo_entidad'      => '',   // CodigoEntidad de Paipa en 1cero1pay
-    //     'id_impuesto'         => '',   // IDImpuesto del predial
-    //     'fuente_pago'         => '1',
-    //     'tipo_implementacion' => '1',
-    //     'tipos_documento'     => [],   // id_tipo_identificacion => código de 1cero1pay
+    //     'codigo_entidad'      => '',
+    //     'id_impuesto'         => '',
+    //     'fuente_pago'         => '',
+    //     'tipo_implementacion' => '',
+    //     'tipos_documento'     => [],   // id_tipo_identificacion => código; vacío = el de usuarios_pse
     //     'activo'              => true,
     //     'pruebas'             => false, // true con credenciales de pruebas: no registra pagos
     //     'usuarios_prueba'     => [],   // documentos; vacío = todos ven el botón
