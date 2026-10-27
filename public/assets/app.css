@@ -85,6 +85,9 @@ button { font: inherit; }
     font: 600 13px var(--sans); cursor: pointer;
 }
 .boton-salir svg { width: 16px; height: 16px; }
+a.boton-salir { text-decoration: none; }
+.pagina-angosta { max-width: 560px; }
+.formulario.formulario-plano { padding: 0; }
 .boton-salir:hover { border-color: var(--primario); color: var(--primario-oscuro); }
 @media (max-width: 640px) { .cuenta-datos, .boton-salir span { display: none; } }
 

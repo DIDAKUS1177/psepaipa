@@ -38,6 +38,7 @@ final class Vista
         'contraste' => '<circle cx="12" cy="12" r="9"/><path d="M12 3v18a9 9 0 0 0 0-18z" fill="currentColor"/>',
         'calendario' => '<rect x="3" y="4.5" width="18" height="16.5" rx="2"/><path d="M3 9.5h18M8 3v3M16 3v3"/>',
         'lista'     => '<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6h.01M4 12h.01M4 18h.01"/>',
+        'llave'     => '<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9"/><path d="m16 7 3 3"/>',
     ];
 
     public static function icono(string $nombre, string $clase = ''): string
@@ -127,6 +128,7 @@ final class Vista
                         <span class="cuenta-nombre"><?= e(mb_convert_case(mb_strtolower($u['nombres'] . ' ' . $u['apellidos']), MB_CASE_TITLE)) ?></span>
                         <span class="cuenta-doc">Documento <?= e($u['documento']) ?></span>
                     </span>
+                    <a class="boton-salir" href="cambiar-clave.php" aria-label="Cambiar contraseña" title="Cambiar contraseña"><?= self::icono('llave') ?><span>Cambiar contraseña</span></a>
                     <form method="post" action="salir.php">
                         <input type="hidden" name="csrf" value="<?= e(tokenCsrf()) ?>">
                         <button class="boton-salir" type="submit" aria-label="Salir"><?= self::icono('salir') ?><span>Salir</span></button>

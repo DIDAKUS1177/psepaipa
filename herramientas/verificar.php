@@ -45,6 +45,8 @@ if (($argv[1] ?? '') === 'pago') {
     $r101 = UnoCeroUno::resumen();
     paso('1cero1pay (Bancolombia)', true, (UnoCeroUno::configurado() ? 'listo' : 'incompleto') . (config('unocerouno.activo', false) ? ', activo' : ', APAGADO') . ' — '
         . implode(', ', array_map(fn($k, $v) => "$k: $v", array_keys($r101), $r101)));
+    // Correo para "¿Olvidaste tu contraseña?" (sin mostrar claves).
+    paso('Correo para recuperar la contraseña', Correo::disponible(), Correo::resumen());
     exit($ok === $n ? 0 : 1);
 }
 

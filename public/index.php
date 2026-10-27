@@ -15,6 +15,7 @@ $vista = ($_GET['v'] ?? '') === 'inscribirse' ? 'inscribirse' : 'entrar';
 $error = null;
 $errores = [];
 $datos = [];
+$errorRecuperar = null;   // "¿Olvidaste tu contraseña?" (2026-10-27)
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!csrfValido($_POST['csrf'] ?? null)) {
@@ -25,6 +26,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             unset($datos['clave'], $datos['clave2']);
             $errores = ['general' => $error];
         }
+    } elseif (($_POST['accion'] ?? '') === 'recuperar') {
+        try {
+            $r = Cuentas::recuperar((string) ($_POST['documento_rec'] ?? ''));
+        } catch (Throwable $t) {
+            error_log('[psepaipa] recuperar contraseña: ' . $t->getMessage());
+            $r = ['error' => 'No pudimos conectarnos con el sistema de predial. Intenta de nuevo en unos minutos.'];
+        }
+        if (isset($r['correo'])) {
+            aviso('Te enviamos una contraseña temporal a ' . $r['correo'] . '. Revisa tu correo, también el spam, e inicia sesión con ella.', 'exito');
+            redirigir('./');
+        }
+        $errorRecuperar = (string) $r['error'];
+        $datos['documento_rec'] = (string) ($_POST['documento_rec'] ?? '');
     } elseif (($_POST['accion'] ?? '') === 'entrar') {
         try {
             $error = Cuentas::entrar((string) ($_POST['documento'] ?? ''), (string) ($_POST['clave'] ?? ''));
@@ -109,15 +123,27 @@ $ciudad = (string) config('municipio.ciudad');
                     </span>
                 </label>
                 <button class="boton boton-primario boton-ancho" type="submit">Iniciar sesión<?= Vista::icono('ir') ?></button>
-                <details class="olvido">
+                <details class="olvido"<?= $errorRecuperar !== null ? ' open' : '' ?>>
                     <summary>¿Olvidaste tu contraseña?</summary>
-                    <p>Comunícate con la Dirección de Impuestos y te ayudan a restablecerla:</p>
+                    <p>Escribe tu número de documento y te enviamos una contraseña temporal al correo de tu cuenta.</p>
+                    <?php if ($errorRecuperar !== null): ?><div class="aviso aviso-error" role="alert"><?= Vista::icono('alerta') ?><span><?= e($errorRecuperar) ?></span></div><?php endif; ?>
+                    <label class="campo">
+                        <span>Número de documento</span>
+                        <input name="documento_rec" form="form-recuperar" inputmode="numeric" autocomplete="off" maxlength="13" value="<?= e($datos['documento_rec'] ?? '') ?>">
+                    </label>
+                    <button class="boton boton-contorno boton-ancho" type="submit" form="form-recuperar">Enviarme una contraseña temporal</button>
+                    <p>¿No te llega? Comunícate con la Dirección de Impuestos:</p>
                     <ul>
                         <?php if (config('municipio.telefono')): ?><li><?= Vista::icono('telefono') ?><?= e(config('municipio.telefono')) ?></li><?php endif; ?>
                         <?php if (config('municipio.correo')): ?><li><?= Vista::icono('correo') ?><?= e(config('municipio.correo')) ?></li><?php endif; ?>
                     </ul>
                 </details>
                 <p class="formulario-pie">¿Primera vez? <a href="./?v=inscribirse">Crea tu cuenta</a></p>
+            </form>
+            <?php // Formulario de "¿Olvidaste tu contraseña?": sus campos están dentro del de entrar (atributo form=) porque un formulario no se anida en otro. ?>
+            <form id="form-recuperar" method="post" novalidate data-ocupado>
+                <input type="hidden" name="csrf" value="<?= e(tokenCsrf()) ?>">
+                <input type="hidden" name="accion" value="recuperar">
             </form>
             <?php else: ?>
             <form method="post" class="formulario" novalidate data-ocupado>

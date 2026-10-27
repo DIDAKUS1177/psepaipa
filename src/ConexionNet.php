@@ -29,6 +29,38 @@ final class ConexionNet
     }
 
     /**
+     * El correo de notificaciones del appsettings.json de la API anterior
+     * (FromEmail, FromPass, Host, Port), o null si falta algo. Lo usa Correo
+     * para mandar la contraseña temporal sin copiar la clave a otro archivo.
+     */
+    public static function correo(string $ruta): ?array
+    {
+        if (!is_file($ruta) || !is_readable($ruta)) {
+            return null;
+        }
+        $json = self::decodificar((string) file_get_contents($ruta));
+        if ($json === null) {
+            return null;
+        }
+        $v = [];
+        foreach ($json as $k => $valor) {
+            if (is_scalar($valor)) {
+                $v[strtolower((string) $k)] = trim((string) $valor);
+            }
+        }
+        if (($v['host'] ?? '') === '' || ($v['fromemail'] ?? '') === '') {
+            return null;
+        }
+        return [
+            'host'      => $v['host'],
+            'puerto'    => (int) ($v['port'] ?? 587) ?: 587,
+            'usuario'   => $v['fromemail'],
+            'clave'     => $v['frompass'] ?? '',
+            'remitente' => $v['fromemail'],
+        ];
+    }
+
+    /**
      * Por qué no se pudo leer, sin mostrar valores: solo existencia, permisos,
      * nombres de claves del JSON y nombres de campos de la cadena.
      */

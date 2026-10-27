@@ -182,6 +182,122 @@ final class Cuentas
         return [];
     }
 
+    /** Sin la I, la O, el 0 ni el 1, que se confunden al leerlos. */
+    const LETRAS_TEMPORAL = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const RECUPERACIONES_DOC = 3;    // por documento y por hora
+    const RECUPERACIONES_IP  = 10;   // por IP y por hora
+
+    /**
+     * Olvidé mi contraseña (igual que en Industria y Comercio, 2026-10-27): la
+     * persona escribe su documento y le llega al correo de su cuenta una
+     * contraseña temporal, que reemplaza la anterior. Si el correo no sale, la
+     * anterior se deja como estaba. Devuelve ['correo' => "ca***@x.com"] o
+     * ['error' => texto].
+     */
+    public static function recuperar(string $documento): array
+    {
+        $doc = self::normalizarDocumento($documento);
+        if ($doc === '') {
+            return ['error' => 'Escribe tu número de documento.'];
+        }
+        $claveDoc = 'recuperar_doc_' . $doc;
+        $claveIp = 'recuperar_ip_' . Limites::ip();
+        if (Limites::excedido($claveDoc, self::RECUPERACIONES_DOC, 3600) || Limites::excedido($claveIp, self::RECUPERACIONES_IP, 3600)) {
+            return ['error' => 'Ya se pidió la contraseña varias veces. Revisa tu correo (también el spam) o intenta de nuevo en una hora.'];
+        }
+        Limites::anotar($claveDoc);
+        Limites::anotar($claveIp);
+
+        $cuentas = Db::filas(
+            "SELECT id, nombres, correo_electronico, password
+               FROM usuarios_pse
+              WHERE REPLACE(REPLACE(REPLACE(REPLACE(UPPER(documento), '.', ''), '-', ''), ' ', ''), '|', '') = ?
+                AND UPPER(LTRIM(RTRIM(estado))) = 'A'
+              ORDER BY id",
+            [$doc]
+        );
+        if (!$cuentas) {
+            return ['error' => 'El documento no se encuentra registrado.'];
+        }
+        $correo = '';
+        $nombre = '';
+        foreach ($cuentas as $c) {
+            $e = trim((string) $c['correo_electronico']);
+            if (filter_var($e, FILTER_VALIDATE_EMAIL)) {
+                $correo = $e;
+                $nombre = trim((string) $c['nombres']);
+                break;
+            }
+        }
+        if ($correo === '') {
+            return ['error' => 'La cuenta no tiene un correo registrado. Comunícate con la Dirección de Impuestos.'];
+        }
+        if (!Correo::disponible()) {
+            error_log('[psepaipa] recuperar contraseña: no hay correo configurado (ver Correo.php).');
+            return ['error' => 'La recuperación automática no está disponible en este momento. Comunícate con la Dirección de Impuestos.'];
+        }
+
+        $temporal = '';
+        for ($i = 0; $i < 8; $i++) {
+            $temporal .= self::LETRAS_TEMPORAL[random_int(0, strlen(self::LETRAS_TEMPORAL) - 1)];
+        }
+        $ids = array_map(fn($c) => (int) $c['id'], $cuentas);
+        $marcas = implode(', ', array_fill(0, count($ids), '?'));
+        // La contraseña cambia primero y el correo sale después; si no sale, se devuelve la anterior.
+        Db::ejecutar("UPDATE usuarios_pse SET password = ?, updated_at = GETDATE() WHERE id IN ($marcas)", array_merge([self::huella($temporal)], $ids));
+        try {
+            Correo::enviar(
+                $correo,
+                $nombre,
+                'Recuperación de contraseña - Impuesto Predial',
+                "Hola " . ($nombre !== '' ? mb_convert_case(mb_strtolower($nombre), MB_CASE_TITLE) : '') . ",\r\n\r\n"
+                . "Tu contraseña temporal es: $temporal\r\n\r\n"
+                . "Úsala para iniciar sesión en el portal del Impuesto Predial y cámbiala desde \"Cambiar contraseña\" en el menú de tu cuenta.\r\n"
+                . "Si no la pediste tú, ingresa y cámbiala, o comunícate con la Dirección de Impuestos.\r\n\r\n"
+                . "Alcaldía de " . config('municipio.ciudad', '')
+            );
+        } catch (Throwable $t) {
+            foreach ($cuentas as $c) {
+                Db::ejecutar('UPDATE usuarios_pse SET password = ? WHERE id = ?', [(string) $c['password'], (int) $c['id']]);
+            }
+            error_log('[psepaipa] recuperar contraseña: no salió el correo: ' . $t->getMessage());
+            return ['error' => 'No pudimos enviar el correo. Tu contraseña sigue igual; intenta de nuevo en unos minutos o comunícate con la Dirección de Impuestos.'];
+        }
+        return ['correo' => Correo::enmascarar($correo)];
+    }
+
+    /**
+     * Cambiar la contraseña con la sesión abierta: pide la actual y escribe la
+     * nueva dos veces. Devuelve [errores por campo]; vacío si quedó cambiada.
+     */
+    public static function cambiarClave(int $idUsuario, string $actual, string $nueva, string $nueva2): array
+    {
+        $limite = 'cambiar_clave_' . $idUsuario;
+        if (Limites::excedido($limite, self::INTENTOS_MAXIMOS, self::MINUTOS_BLOQUEO * 60)) {
+            return ['general' => 'Demasiados intentos fallidos. Espera ' . self::MINUTOS_BLOQUEO . ' minutos e intenta de nuevo.'];
+        }
+        $err = [];
+        if ($actual === '') {
+            $err['actual'] = 'Escribe tu contraseña actual.';
+        }
+        if (strlen($nueva) < 8) {
+            $err['nueva'] = 'La contraseña debe tener al menos 8 caracteres.';
+        } elseif ($nueva !== $nueva2) {
+            $err['nueva2'] = 'Las dos contraseñas no coinciden.';
+        }
+        if ($err) {
+            return $err;
+        }
+        $fila = Db::fila("SELECT password FROM usuarios_pse WHERE id = ? AND UPPER(LTRIM(RTRIM(estado))) = 'A'", [$idUsuario]);
+        if ($fila === null || !hash_equals(strtolower(trim((string) $fila['password'])), self::huella($actual))) {
+            Limites::anotar($limite);
+            return ['actual' => 'La contraseña actual no es correcta.'];
+        }
+        Db::ejecutar('UPDATE usuarios_pse SET password = ?, updated_at = GETDATE() WHERE id = ?', [self::huella($nueva), $idUsuario]);
+        Limites::borrar($limite);
+        return [];
+    }
+
     public static function nombreCompleto(array $u): string
     {
         return trim($u['nombres'] . ' ' . $u['apellidos']);

@@ -46,6 +46,8 @@ class AvisoUsuario extends RuntimeException
 
 require_once __DIR__ . '/Db.php';
 require_once __DIR__ . '/Limites.php';
+require_once __DIR__ . '/ConexionNet.php';
+require_once __DIR__ . '/Correo.php';
 require_once __DIR__ . '/Cuentas.php';
 require_once __DIR__ . '/Predios.php';
 require_once __DIR__ . '/Factura.php';
