@@ -179,7 +179,7 @@ atributo `form=`). `Cuentas::cambiarClave` + `public/cambiar-clave.php`: con la 
 
 ## Pendiente
 
-- Recuperar la contraseña por correo (hoy remite a la Dirección de Impuestos).
+- Recuperar la contraseña por correo: hecho el 2026-10-27 (falta desplegar y probar el envío real con el correo de la API anterior).
 - Probar contra una copia de la base de Paipa antes de publicar (las cifras de Guateque
   traen intereses en 0).
 
