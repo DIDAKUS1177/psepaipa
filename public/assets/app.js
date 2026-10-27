@@ -19,8 +19,10 @@
     // Botón de enviar con estado "trabajando" (evita doble clic).
     $$('form[data-ocupado]').forEach(function (f) {
         f.addEventListener('submit', function () {
-            var b = $('button[type="submit"]', f);
-            if (b) { b.disabled = true; b.classList.add('ocupado'); b.setAttribute('aria-busy', 'true'); }
+            // f.elements incluye también los botones asociados con form="..." desde fuera.
+            Array.prototype.filter.call(f.elements, function (x) { return x.type === 'submit'; }).forEach(function (b) {
+                b.disabled = true; b.classList.add('ocupado'); b.setAttribute('aria-busy', 'true');
+            });
         });
     });
 

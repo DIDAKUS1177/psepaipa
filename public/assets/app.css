@@ -89,6 +89,7 @@ a.boton-salir { text-decoration: none; }
 .pagina-angosta { max-width: 560px; }
 .formulario.formulario-plano { padding: 0; }
 .boton-salir:hover { border-color: var(--primario); color: var(--primario-oscuro); }
+@media (max-width: 960px) { .cuenta-cambiar span { display: none; } }
 @media (max-width: 640px) { .cuenta-datos, .boton-salir span { display: none; } }
 
 .menu { background: #eef3f1; border-top: 1px solid var(--linea); border-bottom: 3px solid var(--primario); }

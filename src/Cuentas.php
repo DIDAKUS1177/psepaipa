@@ -190,9 +190,20 @@ final class Cuentas
     /**
      * Olvidé mi contraseña (igual que en Industria y Comercio, 2026-10-27): la
      * persona escribe su documento y le llega al correo de su cuenta una
-     * contraseña temporal, que reemplaza la anterior. Si el correo no sale, la
-     * anterior se deja como estaba. Devuelve ['correo' => "ca***@x.com"] o
-     * ['error' => texto].
+     * contraseña temporal, que reemplaza la anterior. Devuelve
+     * ['correo' => "ca***@x.com"] o ['error' => texto].
+     *
+     * Lo que se agregó a lo de ICA (revisión del mismo día):
+     *  - Si el correo no sale, la contraseña anterior se devuelve (también si el
+     *    proceso se corta). Si el mensaje salió completo y el servidor no
+     *    contestó, NO se devuelve: pudo haberse entregado.
+     *  - Una sola solicitud a la vez por documento y no dos en 15 segundos (doble
+     *    clic): la repetida no cambia nada y responde igual que la primera.
+     *  - Cambia solo la cuenta cuyo correo recibe el mensaje (la que escoge el
+     *    inicio de sesión), no todas las del mismo documento.
+     *  - Tope de 3 por hora por documento, por correo y 10 por IP, que si la
+     *    carpeta de límites no se puede escribir se vuelve "no disponible".
+     *  - Tras enviarla se levanta el bloqueo por intentos fallidos del documento.
      */
     public static function recuperar(string $documento): array
     {
@@ -200,70 +211,109 @@ final class Cuentas
         if ($doc === '') {
             return ['error' => 'Escribe tu número de documento.'];
         }
+        $noDisponible = 'La recuperación automática no está disponible en este momento. Comunícate con la Dirección de Impuestos.';
+        $demasiadas = 'Ya se pidió la contraseña varias veces. Revisa tu correo (también el spam) o intenta de nuevo en una hora.';
+        if (!Limites::escribible()) {
+            error_log('[psepaipa] recuperar contraseña: la carpeta de límites no se puede escribir.');
+            return ['error' => $noDisponible];
+        }
         $claveDoc = 'recuperar_doc_' . $doc;
-        $claveIp = 'recuperar_ip_' . Limites::ip();
-        if (Limites::excedido($claveDoc, self::RECUPERACIONES_DOC, 3600) || Limites::excedido($claveIp, self::RECUPERACIONES_IP, 3600)) {
-            return ['error' => 'Ya se pidió la contraseña varias veces. Revisa tu correo (también el spam) o intenta de nuevo en una hora.'];
-        }
-        Limites::anotar($claveDoc);
-        Limites::anotar($claveIp);
-
-        $cuentas = Db::filas(
-            "SELECT id, nombres, correo_electronico, password
-               FROM usuarios_pse
-              WHERE REPLACE(REPLACE(REPLACE(REPLACE(UPPER(documento), '.', ''), '-', ''), ' ', ''), '|', '') = ?
-                AND UPPER(LTRIM(RTRIM(estado))) = 'A'
-              ORDER BY id",
-            [$doc]
-        );
-        if (!$cuentas) {
-            return ['error' => 'El documento no se encuentra registrado.'];
-        }
-        $correo = '';
-        $nombre = '';
-        foreach ($cuentas as $c) {
-            $e = trim((string) $c['correo_electronico']);
-            if (filter_var($e, FILTER_VALIDATE_EMAIL)) {
-                $correo = $e;
-                $nombre = trim((string) $c['nombres']);
-                break;
-            }
-        }
-        if ($correo === '') {
-            return ['error' => 'La cuenta no tiene un correo registrado. Comunícate con la Dirección de Impuestos.'];
-        }
-        if (!Correo::disponible()) {
-            error_log('[psepaipa] recuperar contraseña: no hay correo configurado (ver Correo.php).');
-            return ['error' => 'La recuperación automática no está disponible en este momento. Comunícate con la Dirección de Impuestos.'];
-        }
-
-        $temporal = '';
-        for ($i = 0; $i < 8; $i++) {
-            $temporal .= self::LETRAS_TEMPORAL[random_int(0, strlen(self::LETRAS_TEMPORAL) - 1)];
-        }
-        $ids = array_map(fn($c) => (int) $c['id'], $cuentas);
-        $marcas = implode(', ', array_fill(0, count($ids), '?'));
-        // La contraseña cambia primero y el correo sale después; si no sale, se devuelve la anterior.
-        Db::ejecutar("UPDATE usuarios_pse SET password = ?, updated_at = GETDATE() WHERE id IN ($marcas)", array_merge([self::huella($temporal)], $ids));
+        $candado = Limites::tomar('recuperar_' . $doc);
         try {
-            Correo::enviar(
-                $correo,
-                $nombre,
-                'Recuperación de contraseña - Impuesto Predial',
-                "Hola " . ($nombre !== '' ? mb_convert_case(mb_strtolower($nombre), MB_CASE_TITLE) : '') . ",\r\n\r\n"
-                . "Tu contraseña temporal es: $temporal\r\n\r\n"
-                . "Úsala para iniciar sesión en el portal del Impuesto Predial y cámbiala desde \"Cambiar contraseña\" en el menú de tu cuenta.\r\n"
-                . "Si no la pediste tú, ingresa y cámbiala, o comunícate con la Dirección de Impuestos.\r\n\r\n"
-                . "Alcaldía de " . config('municipio.ciudad', '')
-            );
-        } catch (Throwable $t) {
-            foreach ($cuentas as $c) {
-                Db::ejecutar('UPDATE usuarios_pse SET password = ? WHERE id = ?', [(string) $c['password'], (int) $c['id']]);
+            // Otra solicitud del mismo documento en curso o hace menos de 15 segundos (doble clic).
+            $repetida = $candado === null || Limites::cuenta($claveDoc, 15) > 0;
+            if (!$repetida && (!Limites::reservar($claveDoc, self::RECUPERACIONES_DOC, 3600)
+                || !Limites::reservar('recuperar_ip_' . Limites::ip(), self::RECUPERACIONES_IP, 3600))) {
+                return ['error' => $demasiadas];
             }
-            error_log('[psepaipa] recuperar contraseña: no salió el correo: ' . $t->getMessage());
-            return ['error' => 'No pudimos enviar el correo. Tu contraseña sigue igual; intenta de nuevo en unos minutos o comunícate con la Dirección de Impuestos.'];
+
+            $cuentas = Db::filas(
+                "SELECT id, nombres, correo_electronico, password
+                   FROM usuarios_pse
+                  WHERE REPLACE(REPLACE(REPLACE(REPLACE(UPPER(documento), '.', ''), '-', ''), ' ', ''), '|', '') = ?
+                    AND UPPER(LTRIM(RTRIM(estado))) = 'A'
+                  ORDER BY id",
+                [$doc]
+            );
+            if (!$cuentas) {
+                return ['error' => 'El documento no se encuentra registrado.'];
+            }
+            $cuenta = null;
+            foreach ($cuentas as $c) {
+                if (filter_var(trim((string) $c['correo_electronico']), FILTER_VALIDATE_EMAIL)) {
+                    $cuenta = $c;
+                    break;
+                }
+            }
+            if ($cuenta === null) {
+                return ['error' => 'La cuenta no tiene un correo registrado. Comunícate con la Dirección de Impuestos.'];
+            }
+            $correo = trim((string) $cuenta['correo_electronico']);
+            if ($repetida) {
+                return ['correo' => Correo::enmascarar($correo)];
+            }
+            if (!Correo::disponible()) {
+                error_log('[psepaipa] recuperar contraseña: no hay correo configurado (ver Correo.php).');
+                return ['error' => $noDisponible];
+            }
+            if (!Limites::reservar('recuperar_correo_' . md5(strtolower($correo)), self::RECUPERACIONES_DOC, 3600)) {
+                return ['error' => $demasiadas];
+            }
+
+            $temporal = '';
+            for ($i = 0; $i < 8; $i++) {
+                $temporal .= self::LETRAS_TEMPORAL[random_int(0, strlen(self::LETRAS_TEMPORAL) - 1)];
+            }
+            $id = (int) $cuenta['id'];
+            $anterior = (string) $cuenta['password'];
+            $huellaTemporal = self::huella($temporal);
+            $nombre = trim((string) $cuenta['nombres']);
+
+            // Devuelve la anterior solo si sigue puesta la temporal (no pisa un cambio hecho en medio).
+            $restaurar = function () use ($id, $anterior, $huellaTemporal): void {
+                try {
+                    Db::ejecutar('UPDATE usuarios_pse SET password = ? WHERE id = ? AND password = ?', [$anterior, $id, $huellaTemporal]);
+                } catch (Throwable $t) {
+                    error_log('[psepaipa] recuperar contraseña: NO se pudo devolver la contraseña de la cuenta ' . $id . ': ' . $t->getMessage());
+                }
+            };
+            $terminado = false;
+            // Si el proceso se corta a la mitad (tiempo máximo de PHP), la anterior vuelve.
+            register_shutdown_function(function () use (&$terminado, $restaurar): void {
+                if (!$terminado) {
+                    $restaurar();
+                }
+            });
+            set_time_limit(120);
+
+            Db::ejecutar('UPDATE usuarios_pse SET password = ?, updated_at = GETDATE() WHERE id = ?', [$huellaTemporal, $id]);
+            try {
+                Correo::enviar(
+                    $correo,
+                    $nombre,
+                    'Recuperación de contraseña - Impuesto Predial',
+                    'Hola ' . ($nombre !== '' ? mb_convert_case(mb_strtolower($nombre), MB_CASE_TITLE) : '') . ",\r\n\r\n"
+                    . "Tu contraseña temporal es: $temporal\r\n\r\n"
+                    . "Úsala para iniciar sesión en el portal del Impuesto Predial y cámbiala desde \"Cambiar contraseña\" en el menú de tu cuenta.\r\n"
+                    . "Si no la pediste tú, ingresa y cámbiala, o comunícate con la Dirección de Impuestos.\r\n\r\n"
+                    . 'Alcaldía de ' . config('municipio.ciudad', '')
+                );
+            } catch (CorreoIncierto $t) {
+                // Salió completo y el servidor no contestó: pudo entregarse, no se devuelve la anterior.
+                $terminado = true;
+                error_log('[psepaipa] recuperar contraseña: ' . $t->getMessage() . ' (cuenta ' . $id . '; no se devolvió la anterior)');
+            } catch (Throwable $t) {
+                $terminado = true;
+                $restaurar();
+                error_log('[psepaipa] recuperar contraseña: no salió el correo: ' . $t->getMessage());
+                return ['error' => 'No pudimos enviar el correo. Tu contraseña sigue igual; intenta de nuevo en unos minutos o comunícate con la Dirección de Impuestos.'];
+            }
+            $terminado = true;
+            Limites::borrar('login_doc_' . $doc);
+            return ['correo' => Correo::enmascarar($correo)];
+        } finally {
+            Limites::soltar($candado);
         }
-        return ['correo' => Correo::enmascarar($correo)];
     }
 
     /**

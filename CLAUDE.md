@@ -157,6 +157,26 @@ Misma integración de ICA (`src/AvalPay.php`, de `business/class.placetopay.php`
   mismo usuario; `validar.php` cuenta una consulta por IP al día.
 - Menú en celular con nombres cortos hasta 640 px; contraste del pie.
 
+## Contraseña: olvidé y cambiar (2026-10-27)
+
+Igual que en Industria y Comercio (Diego: "que se mantenga igual"). `Cuentas::recuperar`: la persona escribe su
+documento y le llega al correo de su cuenta una contraseña temporal de 8 caracteres que REEMPLAZA la anterior
+(`public/index.php`, bloque «¿Olvidaste tu contraseña?»; sus campos pertenecen a un segundo formulario con el
+atributo `form=`). `Cuentas::cambiarClave` + `public/cambiar-clave.php`: con la sesión abierta, pide la actual.
+- **Correo**: `src/Correo.php`, cliente SMTP mínimo (no se trajo PHPMailer: el de ICA es 6.0.7). Los datos salen de
+  `config.local.php 'correo'` o, por defecto, del `appsettings.json` de la API anterior (FromEmail, FromPass, Host,
+  Port) por la ruta de `db_appsettings` (`ConexionNet::correo`): no hay claves en el repositorio.
+  `verificar.php pago` abre la conexión y se autentica sin mandar nada.
+- **Lo agregado a lo de ICA**: si el correo no sale, se devuelve la anterior (condicional: solo si sigue puesta la
+  temporal; también si el proceso se corta); si el mensaje salió completo y el servidor no contestó, NO se devuelve;
+  una solicitud a la vez por documento y no dos en 15 s (doble clic: la repetida no cambia nada); cambia solo la cuenta
+  que recibe el correo; topes de 3 por hora por documento y por correo y 10 por IP (`Limites::reservar`, atómico;
+  sin carpeta de límites escribible, "no disponible"); tras enviarla se levanta el bloqueo de intentos del documento.
+- **Aceptado a propósito (igual que ICA)**: cualquiera con un documento puede cambiar esa contraseña (3 veces por hora),
+  "El documento no se encuentra registrado" revela qué documentos existen, y las sesiones ya abiertas siguen valiendo
+  hasta los 30 minutos de inactividad. MD5 sin sal sigue igual.
+- Pruebas (scratchpad): `recuperar_clave.py` (27) y `recuperar_clave2.py` (12) con un SMTP de mentira en el puerto 2525/2526.
+
 ## Pendiente
 
 - Recuperar la contraseña por correo (hoy remite a la Dirección de Impuestos).

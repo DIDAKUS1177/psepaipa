@@ -47,6 +47,9 @@ if (($argv[1] ?? '') === 'pago') {
         . implode(', ', array_map(fn($k, $v) => "$k: $v", array_keys($r101), $r101)));
     // Correo para "¿Olvidaste tu contraseña?" (sin mostrar claves).
     paso('Correo para recuperar la contraseña', Correo::disponible(), Correo::resumen());
+    // Abre la conexión y se autentica SIN mandar nada: detecta un certificado que PHP no reconoce o una clave rechazada.
+    $falloCorreo = Correo::disponible() ? Correo::probar() : 'sin configurar';
+    paso('Correo: conexión y autenticación con el servidor', $falloCorreo === null, $falloCorreo ?? 'bien');
     exit($ok === $n ? 0 : 1);
 }
 

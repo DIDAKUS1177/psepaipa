@@ -128,7 +128,7 @@ final class Vista
                         <span class="cuenta-nombre"><?= e(mb_convert_case(mb_strtolower($u['nombres'] . ' ' . $u['apellidos']), MB_CASE_TITLE)) ?></span>
                         <span class="cuenta-doc">Documento <?= e($u['documento']) ?></span>
                     </span>
-                    <a class="boton-salir" href="cambiar-clave.php" aria-label="Cambiar contraseña" title="Cambiar contraseña"><?= self::icono('llave') ?><span>Cambiar contraseña</span></a>
+                    <a class="boton-salir cuenta-cambiar" href="cambiar-clave.php" aria-label="Cambiar contraseña" title="Cambiar contraseña"><?= self::icono('llave') ?><span>Cambiar contraseña</span></a>
                     <form method="post" action="salir.php">
                         <input type="hidden" name="csrf" value="<?= e(tokenCsrf()) ?>">
                         <button class="boton-salir" type="submit" aria-label="Salir"><?= self::icono('salir') ?><span>Salir</span></button>

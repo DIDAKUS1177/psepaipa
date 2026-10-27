@@ -15,8 +15,24 @@
 
 declare(strict_types=1);
 
+/** El servidor de correo no contestó: no se sabe si el mensaje llegó a salir. */
+final class CorreoSinRespuesta extends RuntimeException
+{
+}
+
+/** Se mandó el mensaje completo y no hubo respuesta: puede haberse entregado. */
+final class CorreoIncierto extends RuntimeException
+{
+}
+
 final class Correo
 {
+    /** Segundos que puede tardar todo el envío (conexión, cifrado, autenticación y mensaje). */
+    const PLAZO = 40;
+
+    /** @var float momento (microtime) en que se acaba el plazo del envío en curso */
+    private static $vence = 0.0;
+
     /** @return array{host:string,puerto:int,usuario:string,clave:string,remitente:string,nombre:string,seguridad:string}|null */
     public static function configuracion(): ?array
     {
@@ -62,14 +78,45 @@ final class Correo
             . ', ' . ($c['usuario'] !== '' && $c['clave'] !== '' ? 'con usuario y clave' : 'sin autenticación');
     }
 
-    /** "contribuyente@dominio.com" → "co***@dominio.com". */
+    /** "contribuyente@dominio.com" → "co***@dominio.com" (con un local corto deja menos letras a la vista). */
     public static function enmascarar(string $correo): string
     {
-        $p = explode('@', $correo);
-        return count($p) === 2 ? mb_substr($p[0], 0, 2) . '***@' . $p[1] : '';
+        $i = strrpos($correo, '@');
+        if ($i === false || $i < 1) {
+            return '';
+        }
+        $local = substr($correo, 0, $i);
+        return mb_substr($local, 0, min(2, max(1, mb_strlen($local) - 2))) . '***' . substr($correo, $i);
     }
 
-    /** Envía un correo de texto. Lanza RuntimeException si no se pudo entregar al servidor. */
+    /**
+     * Abre la conexión, la cifra y se autentica, sin mandar nada. Devuelve null
+     * si todo está bien o por qué falla (sin claves). Para herramientas/verificar.php:
+     * detecta el certificado que PHP no reconoce o una clave rechazada antes de
+     * que lo descubra una persona.
+     */
+    public static function probar(): ?string
+    {
+        $c = self::configuracion();
+        if ($c === null) {
+            return 'sin configurar';
+        }
+        self::$vence = microtime(true) + self::PLAZO;
+        try {
+            $f = self::conectar($c);
+            @fwrite($f, "QUIT\r\n");
+            @fclose($f);
+            return null;
+        } catch (Throwable $t) {
+            return $t->getMessage();
+        }
+    }
+
+    /**
+     * Envía un correo de texto. Lanza RuntimeException si no se pudo entregar al
+     * servidor, o CorreoIncierto si el mensaje completo salió y no hubo respuesta
+     * (puede haberse entregado: quien llama no debe darlo por no enviado).
+     */
     public static function enviar(string $para, string $nombre, string $asunto, string $texto): void
     {
         $c = self::configuracion();
@@ -79,29 +126,9 @@ final class Correo
         if (!filter_var($para, FILTER_VALIDATE_EMAIL) || preg_match('/[\r\n]/', $para . $nombre)) {
             throw new RuntimeException('destinatario no válido');
         }
-        $destino = ($c['seguridad'] === 'ssl' ? 'ssl://' : 'tcp://') . $c['host'] . ':' . $c['puerto'];
-        $ctx = stream_context_create(['ssl' => ['verify_peer' => true, 'verify_peer_name' => true, 'peer_name' => $c['host']]]);
-        $f = @stream_socket_client($destino, $codigo, $mensaje, 15, STREAM_CLIENT_CONNECT, $ctx);
-        if ($f === false) {
-            throw new RuntimeException("sin conexión con el servidor de correo ($mensaje)");
-        }
-        stream_set_timeout($f, 20);
+        self::$vence = microtime(true) + self::PLAZO;
+        $f = self::conectar($c);
         try {
-            self::esperar($f, [220]);
-            $yo = 'predial';
-            self::decir($f, "EHLO $yo", [250]);
-            if ($c['seguridad'] === 'tls') {
-                self::decir($f, 'STARTTLS', [220]);
-                if (!@stream_socket_enable_crypto($f, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
-                    throw new RuntimeException('no se pudo cifrar la conexión con el servidor de correo');
-                }
-                self::decir($f, "EHLO $yo", [250]);
-            }
-            if ($c['usuario'] !== '' && $c['clave'] !== '') {
-                self::decir($f, 'AUTH LOGIN', [334]);
-                self::decir($f, base64_encode($c['usuario']), [334]);
-                self::decir($f, base64_encode($c['clave']), [235]);
-            }
             self::decir($f, 'MAIL FROM:<' . $c['remitente'] . '>', [250]);
             self::decir($f, 'RCPT TO:<' . $para . '>', [250, 251]);
             self::decir($f, 'DATA', [354]);
@@ -116,11 +143,54 @@ final class Correo
                 'Content-Transfer-Encoding: base64',
             ];
             $cuerpo = chunk_split(base64_encode($texto), 76, "\r\n");
-            self::decir($f, implode("\r\n", $cabeceras) . "\r\n\r\n" . $cuerpo . "\r\n.", [250]);
+            try {
+                self::decir($f, implode("\r\n", $cabeceras) . "\r\n\r\n" . $cuerpo . "\r\n.", [250]);
+            } catch (CorreoSinRespuesta $e) {
+                throw new CorreoIncierto('el servidor de correo no confirmó el mensaje');
+            }
             @fwrite($f, "QUIT\r\n");
         } finally {
             @fclose($f);
         }
+    }
+
+    /** Conexión lista para MAIL FROM: saludo, cifrado y autenticación hechos. @return resource */
+    private static function conectar(array $c)
+    {
+        $destino = ($c['seguridad'] === 'ssl' ? 'ssl://' : 'tcp://') . $c['host'] . ':' . $c['puerto'];
+        $ssl = ['verify_peer' => true, 'verify_peer_name' => true, 'peer_name' => $c['host']];
+        // En Windows PHP no siempre trae las autoridades de certificación: se toma
+        // el archivo que ya usa curl (el de AvalPay) si el de openssl no está.
+        $curl = (string) ini_get('curl.cainfo');
+        if ((string) ini_get('openssl.cafile') === '' && $curl !== '' && is_file($curl)) {
+            $ssl['cafile'] = $curl;
+        }
+        $f = @stream_socket_client($destino, $codigo, $mensaje, 15, STREAM_CLIENT_CONNECT, stream_context_create(['ssl' => $ssl]));
+        if ($f === false) {
+            throw new RuntimeException("sin conexión con el servidor de correo ($mensaje)");
+        }
+        stream_set_timeout($f, 10);
+        try {
+            self::esperar($f, [220]);
+            $yo = 'predial';
+            self::decir($f, "EHLO $yo", [250]);
+            if ($c['seguridad'] === 'tls') {
+                self::decir($f, 'STARTTLS', [220]);
+                if (!@stream_socket_enable_crypto($f, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
+                    throw new RuntimeException('no se pudo cifrar la conexión con el servidor de correo (certificado)');
+                }
+                self::decir($f, "EHLO $yo", [250]);
+            }
+            if ($c['usuario'] !== '' && $c['clave'] !== '') {
+                self::decir($f, 'AUTH LOGIN', [334]);
+                self::decir($f, base64_encode($c['usuario']), [334]);
+                self::decir($f, base64_encode($c['clave']), [235]);
+            }
+        } catch (Throwable $t) {
+            @fclose($f);
+            throw $t;
+        }
+        return $f;
     }
 
     /** Texto de una cabecera con tildes: =?UTF-8?B?...?= (sin saltos de línea). */
@@ -142,13 +212,19 @@ final class Correo
         $ultima = '';
         while (($l = fgets($f, 1024)) !== false) {
             $ultima = $l;
+            if (microtime(true) > self::$vence) {
+                throw new CorreoSinRespuesta('se acabó el tiempo para hablar con el servidor de correo');
+            }
             if (strlen($l) < 4 || $l[3] !== '-') {
                 break;
             }
         }
+        if ($ultima === '') {
+            throw new CorreoSinRespuesta('el servidor de correo no contestó');
+        }
         $codigo = (int) substr($ultima, 0, 3);
         if (!in_array($codigo, $esperados, true)) {
-            throw new RuntimeException('el servidor de correo respondió ' . ($codigo ?: 'nada'));
+            throw new RuntimeException('el servidor de correo respondió ' . ($codigo ?: 'algo inesperado'));
         }
     }
 }

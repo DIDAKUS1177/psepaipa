@@ -113,7 +113,7 @@ $ciudad = (string) config('municipio.ciudad');
                 <?php if ($error): ?><div class="aviso aviso-error" role="alert"><?= Vista::icono('alerta') ?><span><?= e($error) ?></span></div><?php endif; ?>
                 <label class="campo">
                     <span>Número de documento</span>
-                    <input name="documento" inputmode="numeric" autocomplete="username" required maxlength="13" value="<?= e($datos['documento'] ?? '') ?>" autofocus>
+                    <input name="documento" inputmode="numeric" autocomplete="username" required maxlength="13" value="<?= e($datos['documento'] ?? '') ?>"<?= $errorRecuperar === null ? ' autofocus' : '' ?>>
                 </label>
                 <label class="campo">
                     <span>Contraseña</span>
@@ -129,7 +129,7 @@ $ciudad = (string) config('municipio.ciudad');
                     <?php if ($errorRecuperar !== null): ?><div class="aviso aviso-error" role="alert"><?= Vista::icono('alerta') ?><span><?= e($errorRecuperar) ?></span></div><?php endif; ?>
                     <label class="campo">
                         <span>Número de documento</span>
-                        <input name="documento_rec" form="form-recuperar" inputmode="numeric" autocomplete="off" maxlength="13" value="<?= e($datos['documento_rec'] ?? '') ?>">
+                        <input name="documento_rec" form="form-recuperar" aria-label="Número de documento para recuperar la contraseña" inputmode="numeric" autocomplete="off" maxlength="13" value="<?= e($datos['documento_rec'] ?? '') ?>"<?= $errorRecuperar !== null ? ' autofocus' : '' ?>>
                     </label>
                     <button class="boton boton-contorno boton-ancho" type="submit" form="form-recuperar">Enviarme una contraseña temporal</button>
                     <p>¿No te llega? Comunícate con la Dirección de Impuestos:</p>
