@@ -113,6 +113,38 @@ paso('Paz y salvo: columna anios.consecutivo_paz', (int) Db::valor("SELECT COUNT
 paso('Acuerdos de pago (predios_acuerdos_pago)', Db::valor("SELECT OBJECT_ID('predios_acuerdos_pago', 'U')") !== null,
     (int) Db::valor('SELECT COUNT(*) FROM predios_acuerdos_pago WHERE estado_acuerdo = 1') . ' activos');
 
+// Factura (hoja de la Alcaldía): la tasa de mora que imprime y que la hoja se dibuja en ESTE servidor
+// (con datos inventados: no toca la base ni gasta números de factura).
+$tasaMora = Factura::tasaMoraAnual();
+paso('Factura: tasa de mora del mes (tasas_interes)', $tasaMora !== null, $tasaMora !== null ? number_format($tasaMora, 2, ',', '.') . ' % E.A.' : 'sin dato: la hoja dirá "la tasa vigente"');
+// Identidad del municipio: qué imágenes encontró (sin escudo los PDF salen sin él).
+paso('Municipio', (string) config('municipio.ciudad', '') !== '', (string) config('municipio.ciudad', '') . ' — factura en formato ' . (string) config('factura.formato', 'paipa')
+    . ', paz y salvo ' . (PazYSalvo::activo() ? 'activo' : 'apagado'));
+paso('Escudo del municipio (pantalla y PDF)', imagenMunicipio('escudo') !== '' && imagenMunicipio('escudo_pdf') !== '', imagenMunicipio('escudo') ?: 'no se encontró');
+paso('Dirección de la Alcaldía', true, ((string) config('municipio.direccion', '') ?: parametroPredial('direccion')) ?: 'sin dato: no se imprime');
+if ((string) config('factura.formato', 'paipa') === 'general') {
+    paso('Factura: cuentas para pagar en ventanilla (puntos_pago)', true, count((array) config('puntos_pago', [])) . ' cuentas' . (config('puntos_pago') ? '' : ': la factura sale sin ellas'));
+} else
+try {
+    require_once RAIZ . '/src/PdfPredial.php';
+    require_once RAIZ . '/src/FacturaPdf.php';
+    $filaPrueba = ['ultimo_anio' => $anio, 'avaluo' => 1000000, 'tarifa' => 0.007, 'valor_concepto1' => 7000, 'valor_concepto2' => 0, 'valor_concepto3' => 1500,
+        'valor_concepto4' => 0, 'valor_concepto13' => 0, 'valor_concepto15' => 0, 'valor_concepto18' => 0, 'total_calculo' => 8500];
+    $hoja = FacturaPdf::dibujar([
+        'numero' => $anio . '00000', 'emision' => date('Y-m-d H:i:s'),
+        'predio' => ['codigo_predio' => '000000000000000000000000', 'direccion' => 'PRUEBA', 'zona' => 'Urbano', 'area_hectareas' => 0, 'area_metros' => 100,
+                     'area_construida' => 0, 'ultimo_anio_pago' => $anio - 1, 'propietarios' => [['jerarquia' => '001', 'identificacion' => '1', 'nombre' => 'PRUEBA']]],
+        'ultimo' => null, 'filas' => [$filaPrueba], 'desde' => $anio, 'hasta' => $anio, 'cupon' => ['valor' => 8500, 'hasta' => hoy()],
+        'ean' => $ean, 'tasa' => $tasaMora, 'firma' => (string) config('paz_salvo.firma', ''),
+        'firmante' => (string) config('factura.firmante', 'William Niño Echeverría'), 'cargo' => (string) config('factura.cargo', 'Secretario de Hacienda Municipal'),
+    ]);
+    $paginas = $hoja->getNumPages();
+    $bytes = $hoja->Output('', 'S');
+    paso('Factura: la hoja de la Alcaldía se dibuja en una página (A4)', strncmp($bytes, '%PDF', 4) === 0 && $paginas === 1, number_format(strlen($bytes), 0, ',', '.') . ' bytes');
+} catch (Throwable $t) {
+    paso('Factura: la hoja de la Alcaldía se dibuja', false, $t->getMessage());
+}
+
 // Pago en línea (AvalPay): solo si está configurado.
 if (AvalPay::configurado()) {
     $prov = PagoLinea::proveedor();

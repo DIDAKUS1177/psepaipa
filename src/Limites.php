@@ -20,6 +20,17 @@ final class Limites
      * proceso web no puede escribir en la carpeta de la aplicación (pasó lo
      * mismo en ICA), pero sí donde guarda las sesiones.
      */
+    /**
+     * Nombre de la carpeta compartida del servidor. Cada municipio la suya ('limites_carpeta'
+     * del perfil): en el mismo servidor conviven varios portales y los topes de uno no deben
+     * contar para otro. Sin la clave, la de Paipa de siempre.
+     */
+    private static function nombreCarpeta(): string
+    {
+        $n = (string) config('limites_carpeta', 'psepaipa-limites');
+        return preg_match('/^[a-z0-9-]{3,40}$/', $n) ? $n : 'psepaipa-limites';
+    }
+
     public static function carpeta(): string
     {
         if (self::$carpeta !== null) {
@@ -28,8 +39,8 @@ final class Limites
         $candidatas = array_filter([
             config('dir_datos') ? config('dir_datos') . '/limites' : null,
             RAIZ . '/var/limites',
-            session_save_path() !== '' ? rtrim(preg_replace('/^\d+;/', '', session_save_path()), '/\\') . '/psepaipa-limites' : null,
-            rtrim(sys_get_temp_dir(), '/\\') . '/psepaipa-limites',
+            session_save_path() !== '' ? rtrim(preg_replace('/^\d+;/', '', session_save_path()), '/\\') . '/' . self::nombreCarpeta() : null,
+            rtrim(sys_get_temp_dir(), '/\\') . '/' . self::nombreCarpeta(),
         ]);
         foreach ($candidatas as $dir) {
             if (!is_dir($dir)) {

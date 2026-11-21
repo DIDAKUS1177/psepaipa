@@ -67,6 +67,12 @@ button { font: inherit; }
 .marca-texto strong { font: 700 15px var(--sans); color: var(--tinta); }
 .marca-texto span { font-size: 13.5px; color: var(--tenue); }
 @media (min-width: 760px) { .marca-texto { display: flex; } }
+/* Municipios sin logo con el nombre escrito: escudo + nombre de la Alcaldía. */
+.marca-escudo { height: clamp(46px, 2.4vw + 36px, 66px); }
+.marca-nombre { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
+.marca-nombre strong { font: 700 clamp(17px, 1vw + 13px, 23px) var(--serif); color: var(--tinta); }
+.marca-nombre span { font-size: 13px; color: var(--tenue); }
+@media (max-width: 520px) { .marca-nombre span { display: none; } }
 .cabecera-derecha { display: flex; align-items: center; gap: 10px; flex: none; }
 
 .cuenta { display: flex; align-items: center; gap: 10px; }
@@ -207,7 +213,8 @@ a.boton-salir { text-decoration: none; }
 .entrada { position: relative; isolation: isolate; display: flex; flex: 1 0 auto; overflow: hidden; color: #fff; background: var(--profundo); }
 .entrada-foto {
     position: absolute; inset: -2%; z-index: -2;
-    background: url("img/fondo-paipa.jpg") center 58% / cover no-repeat;
+    /* La foto la pone la plantilla (--foto-entrada): cada municipio la suya; sin foto queda el color. */
+    background: var(--foto-entrada, none) center 58% / cover no-repeat;
     animation: acercar 30s ease-in-out infinite alternate;
 }
 @keyframes acercar { from { transform: scale(1.02); } to { transform: scale(1.1); } }

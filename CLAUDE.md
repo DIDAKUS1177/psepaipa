@@ -17,11 +17,11 @@ public/        raíz web (en Plesk el docroot debe apuntar aquí)
   inicio.php   mis predios + buscar otro predio por referencia catastral
   predio.php   información, estado financiero por vigencia, valor a pagar
   cotizar.php  JSON: valor exacto de un rango de vigencias (sin guardar)
-  factura.php  PDF de la liquidación oficial con código de barras GS1-128
+  factura.php  PDF de la liquidación oficial (hoja A4 de la Alcaldía) con código de barras GS1-128
   estado-cuenta.php  PDF informativo de las vigencias elegidas (no guarda nada)
   paz-y-salvo.php    PDF del certificado de paz y salvo (consecutivo oficial + QR)
   validar.php  verificación pública del QR del paz y salvo
-src/           Db, Cuentas, Predios, Factura, PdfPredial, Vista, AvalPay, PagoLinea, arranque
+src/           Db, Cuentas, Predios, Factura, FacturaPdf, PdfPredial, Vista, AvalPay, PagoLinea, arranque
 herramientas/  verificar.php (comprobación en el servidor), verificar-pagos.php (tarea),
                probar-sp.php <id> (compara el cálculo oficial sin guardar)
 lib/tcpdf      TCPDF recortado (las fuentes básicas)
@@ -83,9 +83,10 @@ Las de `usuarios_pse`, las mismas del PSE anterior, para que nadie se reinscriba
 contraseña es MD5 sin sal en hexadecimal MAYÚSCULA, igual que el sistema anterior: débil,
 pero cambiarla dejaría sin entrar a quien siga usando el viejo mientras conviven.
 Pendiente: migrar a `password_hash` cuando se retire el viejo. Bloqueo de 5 minutos tras
-5 intentos fallidos (en la sesión). En pantalla, la factura y el estado de cuenta el nombre
-y el documento del dueño van ocultos; el paz y salvo los lleva completos, como el oficial
-(lo pidió la Tesorería el 2026-10-14).
+5 intentos fallidos (en la sesión). En pantalla y en el estado de cuenta el nombre y el
+documento del dueño van ocultos; el paz y salvo los lleva completos, como el oficial
+(lo pidió la Tesorería el 2026-10-14), y la factura también desde el formato de la Alcaldía
+(2026-11, ver «Factura en el formato de la Alcaldía»).
 
 ## Desarrollo local
 
@@ -177,6 +178,39 @@ atributo `form=`). `Cuentas::cambiarClave` + `public/cambiar-clave.php`: con la 
   hasta los 30 minutos de inactividad. MD5 sin sal sigue igual.
 - Pruebas (scratchpad): `recuperar_clave.py` (27) y `recuperar_clave2.py` (12) con un SMTP de mentira en el puerto 2525/2526.
 
+## Factura en el formato de la Alcaldía (2026-11)
+
+La Alcaldía pidió su hoja `Factura_Predial_Paipa_A4` (A4, una página) y es **la misma que imprime el
+back-office de predial** (vista `facturaPDF_pai.blade.php` del Laravel): los dos PDF deben verse igual y
+decir lo mismo. Si se cambia uno, se cambia el otro. `src/FacturaPdf.php` la dibuja con TCPDF a partir de datos
+que le pasan (`FacturaPdf::dibujar`), sin tocar la base; `public/factura.php` los arma. El estado de cuenta y
+el paz y salvo no cambian.
+
+- **Un solo total y un solo «pague hasta»** (respuesta de Juan, de la Alcaldía): los del primer descuento
+  que aún vale hoy; si ninguno, el valor de hoy con la fecha de hoy (si pasa la fecha se imprime otra
+  factura). `Factura::cuponHoja` elige sobre `Factura::cupones` (ahora marca `vigente`); en el back-office es
+  `FacturaPaipa::cuponVigente`. El resto de la pantalla y el pago en línea siguen usando `cupones()[0]`.
+- **Tabla**: Vigencia, Avalúo, Tarifa ‰, Impuesto, Intereses, Sobretasa, Int. sobretasa, **Alumbrado**
+  (`valor_concepto18`), Descuentos (c13 + c15) y Total; «Otros» solo aparece si alguna fila tiene un resto
+  (bomberil, saldos). Si el descuento que aplica es el de la 2.ª o 3.ª fecha, la última vigencia lo
+  absorbe en Descuentos para que tabla y total coincidan. Con más de 5 vigencias, las más viejas van sumadas
+  en una fila «Antes de AAAA» (como el oficial).
+- **Propietario**: solo el primero, con nombre y documento COMPLETOS (lo confirmó Juan). Es la única hoja donde
+  salen completos además del paz y salvo; en pantalla y en el estado de cuenta siguen tapados. Ojo: cualquiera
+  que se inscriba y busque un predio por su referencia catastral puede imprimir esa hoja y ver nombre y
+  documento del dueño.
+- **Textos**: competencia, notificación, recurso y mérito ejecutivo son el texto que validó el abogado de la
+  Alcaldía: no se cambian sin su visto bueno (constantes en `FacturaPdf`). La tasa de mora sale de
+  `tasas_interes` (`tasa_mensual` × 12 = % E.A.; `Factura::tasaMoraAnual`); sin dato dice «vigente». El valor
+  se escribe en letras (`FacturaPdf::totalEnLetras`). «Publicada» = fecha de impresión.
+- **Firma**: la de `paz_salvo.firma` (JPEG fuera del repositorio), recortada a la parte de arriba como en la
+  hoja; firmante y cargo en `config 'factura'` (William Niño Echeverría, Secretario de Hacienda).
+- **Código de barras**: igual que antes (GS1-128, `parametros.ean`). La hoja trae el código 7709998086715; falta
+  confirmar con Javier que es el `ean` de Paipa. Las cuentas de los bancos ya coinciden con las de `puntos_pago`.
+- **Pruebas**: `pruebas/datos/probar_factura_pdf.php [carpeta]` (gitignored) dibuja 8 casos con datos inventados
+  (5 y 10 vigencias, una vigencia con otro descuento, «Otros», sin EAN, textos largos, sin dueño) y comprueba una sola
+  hoja; corre con cualquier PHP 8 (no necesita la base). Las cifras reales se prueban con `probar_factura.php`.
+
 ## Pendiente
 
 - Recuperar la contraseña por correo: hecho el 2026-10-27 (falta desplegar y probar el envío real con el correo de la API anterior).
@@ -214,14 +248,47 @@ atributo `form=`). `Cuentas::cambiarClave` + `public/cambiar-clave.php`: con la 
   día, y freno global de 300 por hora (consulta a la base).
 - **Identidad**: la inscripción no prueba que el documento sea de quien se inscribe (igual
   que el PSE viejo), así que nombre y documento del propietario van ocultos (salvo en el paz
-  y salvo, que la Tesorería pidió igual al oficial). Un
+  y salvo, que la Tesorería pidió igual al oficial, y en la factura de la Alcaldía). Un
   predio ajeno solo se abre después de buscarlo (`Predios::permitido`). Pendiente si el
   cliente lo quiere: verificar la propiedad (p. ej. con el número de la última factura).
 - **Huecos**: predios con años no seguidos se pagan por bloques (`data-bloque`); al abrir se
   cotiza el primer bloque (`Predios::rangoInicial`).
 - **Fechas** a SQL Server en ISO (`Y-m-d\TH:i:s`): con un login en español, `Y-m-d` se lee
   día-mes. Errores de la base nunca llegan al usuario (`AvisoUsuario`).
-- Pendiente de confirmar con Paipa: el sistema oficial imprime en Paipa solo el código de
-  barras del tercer cupón cuando hay varios; el portal imprime todos los vigentes.
+- Resuelto con el formato nuevo (2026-11): la hoja imprime un solo cupón, el del primer descuento
+  vigente (antes el sistema oficial imprimía solo los últimos y el portal todos los vigentes).
 - Pruebas locales: `pruebas/datos/probar_factura.php` (12), `probar_cuentas.php` (16),
   y en el scratchpad `funcional.py` (18) y `otros.py` (14).
+
+## Otros municipios: Guateque, Sutatenza, La Capilla y Santa Rosa de Viterbo (2026-11-20, LOCAL, sin commit)
+
+Pedido urgente de Diego: llevar el diseño nuevo a `pseguateque`, `psesutatenza`, `pselacapilla` y `psesantarosa`
+(`.erpsoftsas.com`), que siguen con el Angular viejo («PSE::WEB»). El mismo código sirve a todos; lo propio de cada
+uno está en su perfil.
+
+- **Perfiles** en `config/perfiles/<slug>.php` (guateque, sutatenza, lacapilla, santarosa), sin claves. El
+  `config.local.php` del servidor hace `require` del perfil y le agrega la conexión: ver
+  `config/config.municipio.example.php`. Paipa NO usa perfil: sin las claves nuevas todo vale como antes.
+- **Imágenes** (`imagenMunicipio()` / `archivoImagenMunicipio()` en `arranque.php`): `municipio.imagenes.logo|escudo|
+  escudo_pdf|fondo`. Sin `logo` (imagen con el nombre escrito) el encabezado muestra escudo + «Alcaldía de X»; sin
+  `fondo` la entrada queda con el color. Escudos en `public/assets/img/<slug>/` (salieron del back-office de predial;
+  el de Sutatenza es de 181 px: pedir uno mejor).
+- **Dirección**: si el perfil no la trae, sale de `parametros.direccion` (`parametroPredial()`); el NIT y el EAN ya
+  salían de `parametros`. Teléfono, correo, horario, enlaces y Portal Tributario vacíos = no se imprimen.
+- **Factura**: `factura.formato = 'general'` → `src/FacturaGeneral.php` (la hoja que había antes de la A4 de Paipa:
+  un cupón por fecha vigente). El fundamento legal va en `factura.fundamento`; vacío no cita ninguna norma. Las
+  cuentas de ventanilla van en `puntos_pago` (vacío = sin ellas). La A4 (`FacturaPdf`) es solo de Paipa.
+- **Paz y salvo**: `paz_salvo.activo = false` en los cuatro perfiles (cada Alcaldía tiene formato y firma propios);
+  el predio dice que se solicita en la Tesorería. Para prenderlo: formato, firmante y firma de esa Alcaldía.
+- **Topes de uso**: `limites_carpeta` por municipio (comparten servidor y carpeta de sesiones).
+- **Pago en línea**: Guateque trae `conf_medios_pagos` con su convenio de 1cero1pay (el del PSE viejo), así que el
+  botón sale con `unocerouno` + `desde_bd`; en los otros tres hay que mirarlo con `verificar.php pago` en el servidor.
+- **Probar en local como otro municipio**: escribir el slug en `var/perfil.txt` (lo lee `config/config.local.php`,
+  que no va al repositorio); sin el archivo es Paipa. `verificar.php` dice municipio, formato de factura, escudo y
+  dirección, y sigue fallando a propósito si la base no es la del municipio configurado.
+- **Probado**: Paipa sin cambios (factura 12/12, cuentas 16/16, hoja A4 19/19, paz y salvo 4/4); Guateque con su base
+  real en local (entrada, mis predios, predio, factura general de 1 y 6 vigencias, verificar 34/34). Sutatenza,
+  La Capilla y Santa Rosa: solo la entrada, porque no hay copia de sus bases.
+- **Falta**: datos de cada Alcaldía (contacto, cuentas, fundamento legal, foto), probar contra las bases de los otros
+  tres en el servidor (`verificar.php`), revisión completa, commit y despliegue por municipio (carpeta nueva +
+  `config.local.php` + tarea `verificar-pagos.php` cada 15 min + raíz del documento; volver = raíz anterior).

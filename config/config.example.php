@@ -102,6 +102,13 @@ return [
     //     'id_banco'            => 0,    // bancos.id para registrar el pago; 0 = asobancaria 999
     // ],
 
+    // Factura (liquidación oficial, hoja de la Alcaldía): quién firma. La firma misma (JPEG, fuera
+    // de public/ y del repositorio) es la de 'paz_salvo.firma'; sin ella queda el espacio en blanco.
+    'factura' => [
+        'firmante' => 'William Niño Echeverría',
+        'cargo'    => 'Secretario de Hacienda Municipal',
+    ],
+
     // Paz y salvo (formato del sistema oficial de Paipa, pazPDF_pai).
     'paz_salvo' => [
         'dependencia'    => 'Tesorería Municipal',

@@ -96,6 +96,52 @@ function config(string $clave, $porDefecto = null)
     return $c;
 }
 
+/**
+ * Imagen de la identidad del municipio ('logo', 'escudo', 'escudo_pdf', 'fondo'): ruta
+ * relativa a public/ o '' si ese municipio no la tiene. Sin la clave en la configuración
+ * valen las de Paipa (el primer municipio del portal; su config no las nombra). Los
+ * perfiles de los demás están en config/perfiles/.
+ */
+function imagenMunicipio(string $clave): string
+{
+    $paipa = [
+        'logo'       => 'assets/img/logo-paipa-full.png',
+        'escudo'     => 'assets/img/escudo-paipa.png',
+        'escudo_pdf' => 'assets/img/escudo-paipa-pdf.png',
+        'fondo'      => 'assets/img/fondo-paipa.jpg',
+    ];
+    $ruta = config('municipio.imagenes.' . $clave, $paipa[$clave] ?? '');
+    if (!is_string($ruta) || $ruta === '' || !preg_match('#^assets/img/[A-Za-z0-9_\-/]+\.(png|jpe?g)$#', $ruta)
+        || strpos($ruta, '..') !== false || !is_file(RAIZ . '/public/' . $ruta)) {
+        return '';
+    }
+    return $ruta;
+}
+
+/**
+ * Un dato de la tabla `parametros` de la base de predial del municipio ('direccion', 'nit',
+ * 'alcaldia'...), o '' si no está o la base no responde. Se lee una vez por petición.
+ */
+function parametroPredial(string $nombre): string
+{
+    static $cache = [];
+    if (!array_key_exists($nombre, $cache)) {
+        try {
+            $cache[$nombre] = trim((string) Db::valor("SELECT TOP 1 valor FROM parametros WHERE nombre = ? ORDER BY CASE WHEN estado = 1 THEN 0 ELSE 1 END, id", [$nombre]));
+        } catch (Throwable $t) {
+            $cache[$nombre] = '';
+        }
+    }
+    return $cache[$nombre];
+}
+
+/** La misma imagen como archivo del disco (para los PDF), o '' si no hay. */
+function archivoImagenMunicipio(string $clave): string
+{
+    $ruta = imagenMunicipio($clave);
+    return $ruta === '' ? '' : RAIZ . '/public/' . $ruta;
+}
+
 function e($s): string
 {
     return htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');

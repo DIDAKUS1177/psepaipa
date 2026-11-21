@@ -38,12 +38,17 @@ final class PdfPredial
     }
 
     /** Encabezado. $caja = [rótulo, valor grande, línea 1, línea 2]. */
-    public static function encabezado(TCPDF $pdf, array $caja, array $colorCaja = [23, 117, 111]): void
+    public static function encabezado(TCPDF $pdf, array $caja, ?array $colorCaja = null): void
     {
+        if ($colorCaja === null) {
+            // El color oscuro del municipio (el verde de Paipa si no se configuró otro).
+            $hex = (string) config('municipio.colorOscuro', '#17756f');
+            $colorCaja = preg_match('/^#[0-9a-fA-F]{6}$/', $hex) ? sscanf($hex, '#%02x%02x%02x') : [23, 117, 111];
+        }
         $ciudad = (string) config('municipio.ciudad');
         $nit = (string) Db::valor("SELECT TOP 1 valor FROM parametros WHERE nombre = 'nit' ORDER BY CASE WHEN estado = 1 THEN 0 ELSE 1 END, id");
-        $escudo = RAIZ . '/public/assets/img/escudo-paipa-pdf.png';
-        if (is_file($escudo)) {
+        $escudo = archivoImagenMunicipio('escudo_pdf');
+        if ($escudo !== '') {
             $pdf->Image($escudo, 12, 10, 0, 24);
         }
         $pdf->SetTextColor(18, 32, 29);

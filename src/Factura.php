@@ -119,11 +119,13 @@ final class Factura
             Limites::anotar('factura_predio_' . $idPredio);
         }
 
+        $cupones = self::cupones($filas);
         return [
             'numero'  => $numero,
             'emision' => date('Y-m-d H:i:s'),
             'filas'   => $filas,
-            'cupones' => self::cupones($filas),
+            'cupones' => $cupones,
+            'cupon'   => self::cuponHoja($cupones),
             'ean'     => self::ean(),
         ];
     }
@@ -234,22 +236,64 @@ final class Factura
             return $v === null || $v === '' ? null : substr((string) $v, 0, 10);
         };
         $f1 = $fecha($ultima['primer_fecha']);
+        // 'vigente' = la fecha límite del descuento no ha pasado. El primer cupón siempre se
+        // devuelve (si su fecha ya pasó, con la de hoy); los otros solo si siguen vigentes.
         $cupones = [[
             'valor'     => (int) round($previas + (float) $ultima['total_calculo']),
             'hasta'     => ($f1 !== null && $f1 >= $hoy) ? $f1 : $hoy,
             'descuento' => (float) $ultima['porcentaje_uno'],
+            'vigente'   => $f1 !== null && $f1 >= $hoy,
         ]];
         if (count($filas) === 1 && $f1 !== null) {
             $f2 = $fecha($ultima['segunda_fecha']);
             $f3 = $fecha($ultima['tercera_fecha']);
             if ($f2 !== null && $hoy <= $f2 && $f1 < $f2) {
-                $cupones[] = ['valor' => (int) round((float) $ultima['total_dos']), 'hasta' => $f2, 'descuento' => (float) $ultima['porcentaje_dos']];
+                $cupones[] = ['valor' => (int) round((float) $ultima['total_dos']), 'hasta' => $f2, 'descuento' => (float) $ultima['porcentaje_dos'], 'vigente' => true];
             }
             if ($f3 !== null && $f2 !== null && $hoy <= $f3 && $f2 < $f3) {
-                $cupones[] = ['valor' => (int) round((float) $ultima['total_tres']), 'hasta' => $f3, 'descuento' => (float) $ultima['porcentaje_tres']];
+                $cupones[] = ['valor' => (int) round((float) $ultima['total_tres']), 'hasta' => $f3, 'descuento' => (float) $ultima['porcentaje_tres'], 'vigente' => true];
             }
         }
         return $cupones;
+    }
+
+    /**
+     * El cupón de la hoja oficial de Paipa: un solo total y un solo "pague hasta", los del primer
+     * descuento que aún vale hoy; si ya no queda ninguno, el valor de hoy con la fecha de hoy
+     * (regla de la Alcaldía, 2026-11: si pasa la fecha se imprime otra factura). Es la misma
+     * regla de FacturaPaipa::cuponVigente en el back-office de predial.
+     */
+    public static function cuponHoja(array $cupones): array
+    {
+        foreach ($cupones as $c) {
+            if (!empty($c['vigente'])) {
+                return $c;
+            }
+        }
+        return $cupones[0];
+    }
+
+    /**
+     * Tasa de mora anual (en %) de la tabla tasas_interes para el mes de hoy o, si ese mes aún
+     * no está cargado, el último anterior. La tabla guarda la tasa anual dividida entre 12
+     * (tasa_mensual). Null si no hay dato: la hoja dice entonces "la tasa vigente".
+     */
+    public static function tasaMoraAnual(): ?float
+    {
+        try {
+            $anio = (int) date('Y');
+            $mes = (int) date('n');
+            $v = Db::valor(
+                'SELECT TOP 1 tasa_mensual FROM tasas_interes WHERE anio < ? OR (anio = ? AND mes <= ?) ORDER BY anio DESC, mes DESC',
+                [$anio, $anio, $mes]
+            );
+            if ($v === null || (float) $v <= 0) {
+                return null;
+            }
+            return round((float) $v * 12 * 100, 2);
+        } catch (Throwable $t) {
+            return null;
+        }
     }
 
     /** EAN del convenio de recaudo de predial (parametros.ean). */

@@ -28,9 +28,20 @@ final class PazYSalvo
     const MAX_POR_IP_DIA      = 10;
     const MAX_GLOBAL_HORA     = 60;
 
+    /** ¿Este municipio expide el paz y salvo por el portal? (sin la clave: sí, como Paipa). */
+    public static function activo(): bool
+    {
+        return (bool) config('paz_salvo.activo', true);
+    }
+
     /** Por qué no se puede expedir, o null si se puede. */
     public static function motivo(int $id): ?string
     {
+        // Cada Alcaldía tiene su formato y su firma: donde aún no se acordó, el perfil del
+        // municipio lo deja apagado ('paz_salvo.activo' => false) y el botón no aparece.
+        if (!self::activo()) {
+            return 'El certificado de paz y salvo se solicita en la ' . (string) config('paz_salvo.dependencia', 'Tesorería Municipal') . '.';
+        }
         $anio = (int) date('Y');
         $pendientes = (int) Db::valor(
             'SELECT COUNT(*) FROM predios_pagos pp
@@ -160,7 +171,7 @@ final class PazYSalvo
     public static function ultimoPago(int $id): ?array
     {
         return Db::fila(
-            'SELECT TOP 1 ultimo_anio, factura_pago, fecha_pago, avaluo FROM predios_pagos
+            'SELECT TOP 1 ultimo_anio, factura_pago, fecha_pago, avaluo, valor_pago FROM predios_pagos
               WHERE id_predio = ? AND pagado <> 0 AND ISNULL(anulada, 0) = 0 ORDER BY ultimo_anio DESC',
             [$id]
         );
@@ -206,8 +217,8 @@ final class PazYSalvo
         $pdf->SetTextColor(20, 20, 20);
 
         // ---------- Encabezado: escudo, títulos y QR ----------
-        $escudo = RAIZ . '/public/assets/img/escudo-paipa-pdf.png';
-        if (is_file($escudo)) {
+        $escudo = archivoImagenMunicipio('escudo_pdf');
+        if ($escudo !== '') {
             $pdf->Image($escudo, 22, 12, 0, 28);
         }
         $pdf->SetFont('helvetica', '', 7);
@@ -341,7 +352,7 @@ final class PazYSalvo
             $pdf->Line(15, $pie, 15 + $ancho, $pie);
             $pdf->SetFont('helvetica', '', 7);
             $pdf->SetXY(15, $pie + 1);
-            foreach ([$dependencia, (string) config('paz_salvo.correo', 'tesoreria@paipa-boyaca.gov.co'), (string) config('paz_salvo.direccion', 'Carrera 22 # 25 - 14')] as $linea) {
+            foreach (array_filter([$dependencia, (string) config('paz_salvo.correo', 'tesoreria@paipa-boyaca.gov.co'), (string) config('paz_salvo.direccion', 'Carrera 22 # 25 - 14')], 'strlen') as $linea) {
                 $pdf->Cell($ancho, 3.4, $linea, 0, 2, 'C');
             }
         }

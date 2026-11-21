@@ -83,6 +83,9 @@ final class Vista
         $profundo = $oscuro;
         $suave    = self::mezclar($primario, '#ffffff', 0.9);
         $ciudad   = (string) config('municipio.ciudad', '');
+        $logo     = imagenMunicipio('logo');     // imagen que ya trae el nombre escrito
+        $escudo   = imagenMunicipio('escudo');
+        $fondo    = imagenMunicipio('fondo');
         $u = usuario();
         $v = @filemtime(RAIZ . '/public/assets/app.css') ?: 1;
         $vj = @filemtime(RAIZ . '/public/assets/app.js') ?: 1;
@@ -95,7 +98,7 @@ final class Vista
     <title><?= e($titulo) ?> | Impuesto Predial · Alcaldía de <?= e($ciudad) ?></title>
     <meta name="description" content="Consulta y paga en línea el Impuesto Predial Unificado de <?= e($ciudad) ?>.">
     <meta name="theme-color" content="<?= $profundo ?>">
-    <link rel="icon" type="image/png" href="assets/img/escudo-paipa.png">
+    <?php if ($escudo !== ''): ?><link rel="icon" type="image/png" href="<?= e($escudo) ?>"><?php endif; ?>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,600;0,8..60,700;1,8..60,600&family=Inter:wght@400;500;600;700&display=swap">
@@ -107,6 +110,7 @@ final class Vista
             --profundo: <?= $profundo ?>;
             --profundo-rgb: <?= self::rgb($profundo) ?>;
             --suave: <?= $suave ?>;
+            --foto-entrada: <?= $fondo !== '' ? 'url("' . e($fondo) . '")' : 'none' ?>;
         }
     </style>
     <link rel="stylesheet" href="assets/app.css?v=<?= (int) $v ?>">
@@ -117,8 +121,13 @@ final class Vista
 <header class="cabecera">
     <div class="contenedor cabecera-fila">
         <a class="marca" href="<?= $u ? 'inicio.php' : './' ?>" aria-label="Alcaldía de <?= e($ciudad) ?>, inicio del pago de predial">
-            <img class="marca-logo" src="assets/img/logo-paipa-full.png" alt="Alcaldía de <?= e($ciudad) ?>">
+            <?php if ($logo !== ''): ?>
+            <img class="marca-logo" src="<?= e($logo) ?>" alt="Alcaldía de <?= e($ciudad) ?>">
             <span class="marca-texto"><strong><?= e(config('municipio.secretaria')) ?></strong><span>Impuesto Predial Unificado</span></span>
+            <?php else: /* Solo hay escudo: el nombre de la Alcaldía va escrito al lado. */ ?>
+            <?php if ($escudo !== ''): ?><img class="marca-logo marca-escudo" src="<?= e($escudo) ?>" alt=""><?php endif; ?>
+            <span class="marca-nombre"><strong>Alcaldía de <?= e($ciudad) ?></strong><span><?= e(config('municipio.secretaria')) ?> · Impuesto Predial Unificado</span></span>
+            <?php endif; ?>
         </a>
         <div class="cabecera-derecha">
             <?php if ($u): ?>
@@ -142,7 +151,7 @@ final class Vista
     </div>
     <nav class="menu" aria-label="Menú principal">
         <div class="contenedor menu-fila">
-            <a href="<?= e(config('municipio.portal')) ?>"><?= self::icono('casa') ?><span class="texto-largo">Portal Tributario</span><span class="texto-corto">Portal</span></a>
+            <?php if (config('municipio.portal')): ?><a href="<?= e(config('municipio.portal')) ?>"><?= self::icono('casa') ?><span class="texto-largo">Portal Tributario</span><span class="texto-corto">Portal</span></a><?php endif; ?>
             <?php if ($u): ?>
                 <a href="inicio.php" class="<?= $seccion === 'predios' ? 'activo' : '' ?>" <?= $seccion === 'predios' ? 'aria-current="page"' : '' ?>><?= self::icono('predio') ?>Mis predios</a>
                 <a href="inicio.php?vista=otros" class="<?= $seccion === 'otro' ? 'activo' : '' ?>" <?= $seccion === 'otro' ? 'aria-current="page"' : '' ?>><?= self::icono('buscar') ?><span class="texto-largo">Otros predios</span><span class="texto-corto">Otros</span></a>
@@ -177,13 +186,15 @@ final class Vista
     public static function cerrar(): void
     {
         $ciudad = (string) config('municipio.ciudad', '');
+        // Sin dirección en la configuración vale la de la base de predial del municipio.
+        $direccion = (string) config('municipio.direccion', '') ?: parametroPredial('direccion');
         $vj = (int) ($GLOBALS['__vj'] ?? 1);
         ?>
 </main>
 <footer class="pie" id="contacto">
     <div class="contenedor pie-rejilla">
         <div class="pie-marca">
-            <img src="assets/img/escudo-paipa.png" alt="" width="48" height="56">
+            <?php $escudoPie = imagenMunicipio('escudo'); if ($escudoPie !== ''): ?><img class="pie-escudo" src="<?= e($escudoPie) ?>" alt="" height="56"><?php endif; ?>
             <div>
                 <strong>Alcaldía de <?= e($ciudad) ?></strong>
                 <span><?= e(config('municipio.secretaria')) ?></span>
@@ -195,14 +206,14 @@ final class Vista
             <ul class="pie-contacto">
                 <?php if (config('municipio.telefono')): ?><li><?= self::icono('telefono') ?><a href="tel:+57<?= e(preg_replace('/\D/', '', (string) config('municipio.telefono'))) ?>"><?= e(config('municipio.telefono')) ?></a></li><?php endif; ?>
                 <?php if (config('municipio.correo')): ?><li><?= self::icono('correo') ?><a href="mailto:<?= e(config('municipio.correo')) ?>"><?= e(config('municipio.correo')) ?></a></li><?php endif; ?>
-                <?php if (config('municipio.direccion')): ?><li><?= self::icono('direccion') ?><span><?= e(config('municipio.direccion')) ?>, <?= e($ciudad) ?>, <?= e(config('municipio.departamento')) ?></span></li><?php endif; ?>
+                <?php if ($direccion !== ''): ?><li><?= self::icono('direccion') ?><span><?= e($direccion) ?>, <?= e($ciudad) ?>, <?= e(config('municipio.departamento')) ?></span></li><?php endif; ?>
                 <?php if (config('municipio.horario')): ?><li><?= self::icono('reloj') ?><span><?= e(config('municipio.horario')) ?></span></li><?php endif; ?>
             </ul>
         </div>
         <div>
             <h2 class="pie-titulo">Enlaces</h2>
             <ul class="pie-enlaces">
-                <li><a href="<?= e(config('municipio.portal')) ?>">Portal Tributario de <?= e($ciudad) ?></a></li>
+                <?php if (config('municipio.portal')): ?><li><a href="<?= e(config('municipio.portal')) ?>">Portal Tributario de <?= e($ciudad) ?></a></li><?php endif; ?>
                 <?php foreach ((array) config('municipio.enlaces', []) as $texto => $url): ?>
                     <li><a href="<?= e($url) ?>" target="_blank" rel="noopener"><?= e($texto) ?></a></li>
                 <?php endforeach; ?>
