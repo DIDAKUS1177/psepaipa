@@ -102,6 +102,27 @@ return [
     //     'id_banco'            => 0,    // bancos.id para registrar el pago; 0 = asobancaria 999
     // ],
 
+    // Tercer botón: Wompi (2026-11-21), Web Checkout por redirección. Sin 'wompi' ni
+    // 'wompi_pse_anterior' no existe: ni botón, ni proveedor, ni consultas. Las tres llaves
+    // deben ser del mismo ambiente (pub_prod_/prv_prod_/prod_integrity_ o las de test); con
+    // llaves de pruebas solo pagan los 'usuarios_prueba' y un aprobado no registra pago. La
+    // confirmación es la búsqueda por referencia con la llave privada (al volver de Wompi y
+    // con herramientas/verificar-pagos.php cada 15 minutos); no usa URL de eventos.
+    // "verificar.php pago" dice ambiente, de dónde salieron las llaves y si Wompi las acepta.
+    // 'wompi' => [
+    //     'public_key'      => '',     // pub_prod_...   (vacía = la del portal anterior)
+    //     'private_key'     => '',     // prv_prod_...
+    //     'integrity_key'   => '',     // prod_integrity_...
+    //     'activo'          => true,
+    //     'usuarios_prueba' => [],     // documentos; vacío = todos ven el botón
+    //     'proveedor'       => 7,      // generacion_pagos.proveedor (que no lo use otro sistema)
+    //     'id_banco'        => 0,      // bancos.id para registrar el pago; 0 = asobancaria 999
+    //     'rotulo'          => 'Wompi · Tarjeta, Nequi y más',   // texto del botón
+    // ],
+    // Lo que falte en 'wompi' se lee del portal anterior del municipio (Angular), sin copiar
+    // llaves: ruta de su assets/config.json (plataforma "WOMPI", solo si estaba activa).
+    // 'wompi_pse_anterior' => '',
+
     // Factura (liquidación oficial, hoja de la Alcaldía): quién firma. La firma misma (JPEG, fuera
     // de public/ y del repositorio) es la de 'paz_salvo.firma'; sin ella queda el espacio en blanco.
     'factura' => [

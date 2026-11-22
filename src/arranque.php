@@ -53,6 +53,7 @@ require_once __DIR__ . '/Predios.php';
 require_once __DIR__ . '/Factura.php';
 require_once __DIR__ . '/AvalPay.php';
 require_once __DIR__ . '/UnoCeroUno.php';
+require_once __DIR__ . '/Wompi.php';
 require_once __DIR__ . '/PagoLinea.php';
 require_once __DIR__ . '/PazYSalvo.php';
 require_once __DIR__ . '/Vista.php';

@@ -21,4 +21,11 @@ $c['db_appsettings'] = dirname(__DIR__) . '/serviciospseguateque.erpsoftsas.com/
 // se leen de conf_medios_pagos de la base. "verificar.php pago" dice qué encontró.
 // $c['unocerouno'] = ['url' => 'https://www.1cero1pay.com/ApiPayment/api', 'activo' => true, 'proveedor' => 6];
 
+// Pago en línea con Wompi, con las llaves del portal anterior del municipio (se leen de su
+// assets/config.json, plataforma "WOMPI"; no se copian). Lo que ese archivo no traiga se
+// escribe en $c['wompi'] (public_key, private_key, integrity_key). Primero con
+// 'usuarios_prueba' y, cuando "verificar.php pago" salga bien y se pruebe un pago, para todos.
+// $c['wompi'] = ['activo' => true, 'usuarios_prueba' => ['documento de quien prueba'], 'proveedor' => 7];
+// $c['wompi_pse_anterior'] = dirname(__DIR__) . '/pseguateque.erpsoftsas.com/assets/config.json';
+
 return $c;

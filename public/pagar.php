@@ -1,8 +1,8 @@
 <?php
 /**
- * Pago en línea de las vigencias elegidas, con una de las dos pasarelas
- * (pasarela = 'avalpay', PSE del Banco de Bogotá, o '101', Bancolombia con
- * 1cero1pay; 2026-10-21).
+ * Pago en línea de las vigencias elegidas, con una de las tres pasarelas
+ * (pasarela = 'avalpay', PSE del Banco de Bogotá; '101', Bancolombia con
+ * 1cero1pay, 2026-10-21; o 'wompi', 2026-11-21, solo donde está configurado).
  *
  * 1. Desde el predio (POST id, desde, hasta): resumen con el valor exacto de
  *    hoy y la aceptación del tratamiento de datos (lo exige la certificación
@@ -25,9 +25,11 @@ $id = (int) ($_POST['id'] ?? 0);
 $desde = (int) ($_POST['desde'] ?? 0);
 $hasta = (int) ($_POST['hasta'] ?? 0);
 $volver = 'predio.php?id=' . $id;
-$uno = ($_POST['pasarela'] ?? '') === '101';
+$medio = PagoLinea::medioPedido($_POST['pasarela'] ?? '');
+$uno = $medio === '101';
+[$pasarela, $bloque] = PagoLinea::MEDIOS[$medio];
 
-if ($uno ? !UnoCeroUno::disponiblePara($u) : !AvalPay::disponiblePara($u)) {
+if (!$pasarela::disponiblePara($u)) {
     aviso('El pago en línea todavía no está disponible. Puedes pagar en el banco con la factura.', 'info');
     redirigir($volver);
 }
@@ -46,13 +48,12 @@ try {
     if (PagoLinea::porConciliar($id) !== null) {
         throw new AvisoUsuario('Este predio tiene un pago en línea aprobado que la Alcaldía está revisando. Antes de volver a pagar, comunícate con la Dirección de Impuestos.');
     }
-    if ($uno ? !UnoCeroUno::configurado() : !AvalPay::configurado()) {
+    if (!$pasarela::configurado()) {
         throw new AvisoUsuario('El pago en línea no está disponible en este momento. Puedes pagar en el banco con la factura.');
     }
     // En el ambiente de pruebas solo pagan los usuarios de prueba (y el pago
     // no se registra: PagoLinea lo deja en PRUEBAS).
-    if ($uno ? (UnoCeroUno::esPruebas() && !config('unocerouno.usuarios_prueba'))
-             : (AvalPay::esPruebas() && !config('avalpay.usuarios_prueba'))) {
+    if ($pasarela::esPruebas() && !config($bloque . '.usuarios_prueba')) {
         throw new AvisoUsuario('El pago en línea no está disponible en este momento. Puedes pagar en el banco con la factura.');
     }
     $anio = (int) date('Y');
@@ -65,7 +66,7 @@ try {
         $f = Factura::generar($id, $desde, $hasta, (int) $u['id']);
         $valor = (int) $f['cupones'][0]['valor'];
         if ($valor === (int) ($_POST['valor'] ?? -1)) {
-            $intento = PagoLinea::crearIntento($id, $f['numero'], $valor, (string) $u['documento'], $desde, $hasta, $uno);
+            $intento = PagoLinea::crearIntento($id, $f['numero'], $valor, (string) $u['documento'], $desde, $hasta, $medio);
             if ($intento === null) {
                 // Otra pestaña abrió el pago un instante antes: a ese.
                 $otro = PagoLinea::enTramite($id);
@@ -76,6 +77,17 @@ try {
                 if ($uno) {
                     [$requestId, $url] = UnoCeroUno::crear($f['numero'], $id, $valor, $u);
                     if (!UnoCeroUno::urlDePagoValida($url)) {
+                        throw new RuntimeException('enlace de pago inesperado: ' . parse_url($url, PHP_URL_HOST));
+                    }
+                    PagoLinea::anotarSesion($intento, $requestId, $url);
+                    redirigir($url);
+                }
+                if ($medio === 'wompi') {
+                    // No hay sesión que crear: la referencia única del intento y la firma
+                    // de integridad van en el enlace. Se anota ANTES de salir hacia Wompi.
+                    $requestId = Wompi::referencia($f['numero']);
+                    $url = Wompi::urlCheckout($requestId, $valor, PagoLinea::urlRetorno($intento));
+                    if (!Wompi::urlDePagoValida($url)) {
                         throw new RuntimeException('enlace de pago inesperado: ' . parse_url($url, PHP_URL_HOST));
                     }
                     PagoLinea::anotarSesion($intento, $requestId, $url);
@@ -139,7 +151,7 @@ Vista::abrir('Pagar en línea', ['titulo' => 'Pago en línea', 'volver' => $volv
             <div><dt>Referencia catastral</dt><dd class="mono"><?= e($p['codigo_predio']) ?></dd></div>
             <div><dt>Dirección</dt><dd><?= e($p['direccion'] ?? '') ?></dd></div>
             <div><dt>Vigencias</dt><dd><?= $desde === $hasta ? e($desde) : e($desde . ' a ' . $hasta) ?></dd></div>
-            <div><dt>Medio de pago</dt><dd><?= $uno ? 'PSE, débito desde tu cuenta Bancolombia' : 'PSE, débito desde tu cuenta bancaria (Banco de Bogotá)' ?></dd></div>
+            <div><dt>Medio de pago</dt><dd><?= $medio === 'wompi' ? 'Wompi: tarjeta, Nequi, PSE y otros medios' : ($uno ? 'PSE, débito desde tu cuenta Bancolombia' : 'PSE, débito desde tu cuenta bancaria (Banco de Bogotá)') ?></dd></div>
             <div class="pago-total"><dt>Total a pagar</dt><dd><?= pesos($total) ?> <small>COP</small></dd></div>
         </dl>
         <p class="valor-nota"><?= Vista::icono('info') ?><span>Valor liquidado hoy, <?= e(fechaCorta(hoy())) ?>. El pago queda registrado en cuanto el banco lo confirme; si se demora, no inicies otro.</span></p>
@@ -150,14 +162,14 @@ Vista::abrir('Pagar en línea', ['titulo' => 'Pago en línea', 'volver' => $volv
             <input type="hidden" name="desde" value="<?= (int) $desde ?>">
             <input type="hidden" name="hasta" value="<?= (int) $hasta ?>">
             <input type="hidden" name="valor" value="<?= (int) $total ?>">
-            <input type="hidden" name="pasarela" value="<?= $uno ? '101' : 'avalpay' ?>">
+            <input type="hidden" name="pasarela" value="<?= e($medio) ?>">
             <label class="pago-acepto">
                 <input type="checkbox" name="acepto" value="1" required>
                 <span>Acepto el tratamiento de mis datos personales<?php if ($politica !== ''): ?> según la <a href="<?= e($politica) ?>" target="_blank" rel="noopener">política de tratamiento de datos</a><?php endif; ?> para procesar este pago.</span>
             </label>
             <div class="pago-botones">
                 <a class="boton boton-contorno" href="<?= e($volver) ?>">Cancelar</a>
-                <button type="submit" class="boton boton-primario"><?= Vista::icono('pagar') ?><?= $uno ? 'Ir a pagar con Bancolombia' : 'Ir a pagar con PSE' ?></button>
+                <button type="submit" class="boton boton-primario"><?= Vista::icono('pagar') ?><?= $medio === 'wompi' ? 'Ir a pagar con Wompi' : ($uno ? 'Ir a pagar con Bancolombia' : 'Ir a pagar con PSE') ?></button>
             </div>
         </form>
     </section>

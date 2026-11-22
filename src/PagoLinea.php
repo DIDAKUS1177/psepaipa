@@ -1,18 +1,21 @@
 <?php
 /**
  * Pagos en línea del predial: los intentos y el registro del pago en la base
- * oficial. Dos pasarelas (2026-10-21): AvalPay (PSE, Banco de Bogotá) y
- * 1cero1pay (Bancolombia, src/UnoCeroUno.php). Cada intento lleva el
- * proveedor de su pasarela; un predio no tiene dos pagos en curso aunque sean
- * de pasarelas distintas.
+ * oficial. Tres pasarelas: AvalPay (PSE, Banco de Bogotá), 1cero1pay
+ * (Bancolombia, src/UnoCeroUno.php, 2026-10-21) y Wompi (src/Wompi.php,
+ * 2026-11-21; solo donde está configurado). Cada intento lleva el proveedor de
+ * su pasarela (self::medio lo traduce a 'avalpay' | '101' | 'wompi', que es
+ * también el valor del campo "pasarela" de pagar.php); un predio no tiene dos
+ * pagos en curso aunque sean de pasarelas distintas.
  *
  * Intentos: tabla generacion_pagos, la misma que usaba el PSE anterior (una
  * fila por intento). No se crean tablas nuevas. Columnas que se usan:
  *   referencia = id del predio, factura = número de la factura que se paga,
  *   codigo_entidad = EAN, propietario_identificacion = documento de quien
  *   paga, total = valor, Impuesto = "Predial AAAA-AAAA" (el rango pagado),
- *   IDTransaccion = requestId de AvalPay, URL = enlace de pago, CUS =
- *   autorización del banco, MedioPago = banco, Mensaje = último mensaje,
+ *   IDTransaccion = requestId de AvalPay (en Wompi, la referencia única del
+ *   intento), URL = enlace de pago, CUS = autorización del banco (en Wompi,
+ *   el id de su transacción), MedioPago = banco, Mensaje = último mensaje,
  *   EstadoTransaccion = COMENZADA / PENDING / APPROVED / REJECTED / ... /
  *   DOBLE / REVISAR, Activo = 1 mientras falta saber en qué terminó,
  *   proveedor = config avalpay.proveedor (5 por defecto: distinto del PSE
@@ -35,6 +38,35 @@ final class PagoLinea
     const MINUTOS_COMENZADA = 35;   // una sesión sin intento vence a los 30
     const DIAS_PENDIENTE    = 3;    // PSE puede tardar en confirmar
     const FINALES_SIN_PAGO  = ['REJECTED', 'EXPIRED', 'FAILED', 'DECLINED', 'ERROR'];
+    const HORAS_REINTENTO   = 26;   // Wompi: cuánto se vuelve a mirar un intento cerrado sin pago
+
+    /** Cada medio: [clase de la pasarela, su bloque en la configuración, nombre para los mensajes]. */
+    const MEDIOS = [
+        'avalpay' => ['AvalPay', 'avalpay', 'AvalPay'],
+        '101'     => ['UnoCeroUno', 'unocerouno', '1cero1pay'],
+        'wompi'   => ['Wompi', 'wompi', 'Wompi'],
+    ];
+
+    /** El medio que pide el formulario ("pasarela"); lo que no se conoce es AvalPay, como siempre. */
+    public static function medioPedido($pasarela): string
+    {
+        return is_string($pasarela) && isset(self::MEDIOS[$pasarela]) ? $pasarela : 'avalpay';
+    }
+
+    /** Clase de la pasarela de un medio (AvalPay, UnoCeroUno o Wompi). */
+    public static function clase(string $medio): string
+    {
+        return self::MEDIOS[$medio][0];
+    }
+
+    /** Medio de un intento, por su proveedor. */
+    public static function medio(array $i): string
+    {
+        if (self::esWompi($i)) {
+            return 'wompi';
+        }
+        return self::esUnoCeroUno($i) ? '101' : 'avalpay';
+    }
 
     /** Proveedor de AvalPay en generacion_pagos. */
     public static function proveedor(): int
@@ -42,10 +74,16 @@ final class PagoLinea
         return (int) config('avalpay.proveedor', 5);
     }
 
-    /** Los proveedores de este portal (AvalPay y 1cero1pay). */
+    /** Los proveedores de este portal (AvalPay, 1cero1pay y, si el municipio lo tiene, Wompi). */
     public static function proveedores(): array
     {
-        return array_values(array_unique([self::proveedor(), UnoCeroUno::proveedor()]));
+        return array_values(array_unique(array_merge([self::proveedor(), UnoCeroUno::proveedor()], Wompi::previsto() ? [Wompi::proveedor()] : [])));
+    }
+
+    public static function esWompi(array $i): bool
+    {
+        return Wompi::previsto() && (int) $i['proveedor'] === Wompi::proveedor()
+            && !in_array(Wompi::proveedor(), [self::proveedor(), UnoCeroUno::proveedor()], true);
     }
 
     public static function esUnoCeroUno(array $i): bool
@@ -62,7 +100,7 @@ final class PagoLinea
     /** ¿La pasarela del intento está configurada? */
     public static function pasarelaLista(array $i): bool
     {
-        return self::esUnoCeroUno($i) ? UnoCeroUno::configurado() : AvalPay::configurado();
+        return self::clase(self::medio($i))::configurado();
     }
 
     /**
@@ -159,8 +197,9 @@ final class PagoLinea
      * factura sigue cubriendo el rango por el mismo valor. Devuelve el id o
      * null si ya hay un pago en curso. Lanza AvisoUsuario si la factura cambió.
      */
-    public static function crearIntento(int $idPredio, string $factura, int $valor, string $documento, int $desde, int $hasta, bool $unoCeroUno = false): ?int
+    public static function crearIntento(int $idPredio, string $factura, int $valor, string $documento, int $desde, int $hasta, string $medio = 'avalpay'): ?int
     {
+        $medio = self::medioPedido($medio);
         $pdo = Db::pdo();
         $pdo->beginTransaction();
         try {
@@ -186,7 +225,8 @@ final class PagoLinea
                  VALUES (?, ?, 1, 1, ?, ?, 7, ?, ?, ?, 'COMENZADA', ?, 1, ?)",
                 [(string) (Factura::ean() ?? ''), $factura, $documento, (string) $idPredio, $valor,
                  date('Y-m-d\TH:i:s'), 'Predial ' . ($desde === $hasta ? $desde : $desde . '-' . $hasta),
-                 $unoCeroUno ? UnoCeroUno::MEDIO : 'PSE', $unoCeroUno ? UnoCeroUno::proveedor() : self::proveedor()]
+                 ['avalpay' => 'PSE', '101' => UnoCeroUno::MEDIO, 'wompi' => Wompi::MEDIO][$medio],
+                 ['avalpay' => self::proveedor(), '101' => UnoCeroUno::proveedor(), 'wompi' => Wompi::proveedor()][$medio]]
             );
             $pdo->commit();
             return $id;
@@ -223,10 +263,18 @@ final class PagoLinea
      * Consulta AvalPay y aplica el resultado al intento (y a la base si quedó
      * aprobado). Devuelve el intento actualizado y lo interpretado.
      */
-    public static function actualizar(array $i): array
+    public static function actualizar(array $i, string $idRetorno = ''): array
     {
         if ((int) $i['Activo'] !== 1 || trim((string) $i['IDTransaccion']) === '') {
             return ['intento' => $i, 'info' => null];
+        }
+        if (self::esWompi($i)) {
+            $info = self::consultarWompi($i, $idRetorno);
+            if ($info === null) {
+                return ['intento' => $i, 'info' => null];
+            }
+            self::aplicar($i, $info);
+            return ['intento' => self::intento((int) $i['IdGeneraPado']), 'info' => $info];
         }
         if (self::esUnoCeroUno($i)) {
             // 1cero1pay se consulta por la factura (como el "Validar pago" del viejo).
@@ -242,6 +290,82 @@ final class PagoLinea
         $info = AvalPay::interpretar($r);
         self::aplicar($i, $info);
         return ['intento' => self::intento((int) $i['IdGeneraPado']), 'info' => $info];
+    }
+
+    /**
+     * Pregunta a Wompi por las transacciones de la referencia del intento (con
+     * la llave privada: solo las de este comercio). El id que trae la URL del
+     * retorno solo sirve para elegir cuál mostrar; nunca se aplica por sí solo.
+     * null si la referencia guardada no es de la factura del intento.
+     */
+    private static function consultarWompi(array $i, string $idRetorno = ''): ?array
+    {
+        $ref = trim((string) $i['IDTransaccion']);
+        if (!Wompi::referenciaDeFactura($ref, trim((string) $i['factura']))) {
+            error_log('[psepaipa pago] la referencia ' . $ref . ' no es de la factura ' . $i['factura']);
+            return null;
+        }
+        return Wompi::interpretar(Wompi::transacciones($ref), (int) $i['total'], Wompi::idValido($idRetorno) ? $idRetorno : '');
+    }
+
+    /** Intento de Wompi por su referencia o por el id de la transacción de Wompi. */
+    public static function porWompi(string $referenciaOId): ?array
+    {
+        if (!Wompi::previsto() || trim($referenciaOId) === '') {
+            return null;
+        }
+        return Db::fila(
+            'SELECT TOP 1 * FROM generacion_pagos WHERE proveedor = ? AND (IDTransaccion = ? OR CUS = ?) ORDER BY IdGeneraPado DESC',
+            [Wompi::proveedor(), trim($referenciaOId), trim($referenciaOId)]
+        );
+    }
+
+    /**
+     * Para la tarea: en la página de Wompi se puede reintentar con la misma
+     * referencia mientras el enlace valga, así que un intento que aquí quedó
+     * rechazado o vencido pudo pagarse después. Se vuelve a preguntar por los
+     * cerrados sin pago de las últimas horas; si ahora hay una transacción
+     * aprobada o pendiente, el intento se reabre y se aplica con las reglas de
+     * siempre (si la factura ya se pagó por otro lado queda DOBLE). Devuelve
+     * una línea de texto por intento que cambió o falló.
+     */
+    public static function reintentosWompi(): array
+    {
+        if (!Wompi::configurado()) {
+            return [];
+        }
+        $cerrados = Db::filas(
+            "SELECT * FROM generacion_pagos
+              WHERE proveedor = ? AND Activo = 0 AND EstadoTransaccion IN ('DECLINED', 'ERROR', 'EXPIRED')
+                AND ISNULL(IDTransaccion, '') <> '' AND created_at >= ?
+              ORDER BY IdGeneraPado",
+            [Wompi::proveedor(), date('Y-m-d\TH:i:s', time() - self::HORAS_REINTENTO * 3600)]
+        );
+        $lineas = [];
+        foreach ($cerrados as $i) {
+            if (!self::esWompi($i)) {
+                continue;
+            }
+            $id = (int) $i['IdGeneraPado'];
+            try {
+                $info = self::consultarWompi($i);
+                if ($info === null || $info['sinIntento'] || (!$info['aprobado'] && $info['estado'] !== 'PENDING')) {
+                    continue;
+                }
+                Db::ejecutar(
+                    "UPDATE generacion_pagos SET Activo = 1 WHERE IdGeneraPado = ? AND Activo = 0 AND EstadoTransaccion IN ('DECLINED', 'ERROR', 'EXPIRED')",
+                    [$id]
+                );
+                $actual = self::intento($id);
+                if ($actual !== null && (int) $actual['Activo'] === 1) {
+                    self::aplicar($actual, $info);
+                }
+                $lineas[] = $id . ' ' . trim((string) $i['factura']) . ': ' . $i['EstadoTransaccion'] . ' -> ' . (self::intento($id)['EstadoTransaccion'] ?? '?') . ' (reintento en Wompi)';
+            } catch (Throwable $t) {
+                $lineas[] = $id . ': ERROR ' . $t->getMessage();
+            }
+        }
+        return $lineas;
     }
 
     /** Guarda el estado; si el banco aprobó, registra el pago. Idempotente. */
@@ -266,7 +390,8 @@ final class PagoLinea
             return;
         }
         $estado = $info['estado'];
-        $activo = in_array($estado, self::FINALES_SIN_PAGO, true) ? 0 : 1;
+        // VOIDED (anulada) es un final solo de Wompi; para las otras dos nada cambia.
+        $activo = in_array($estado, self::FINALES_SIN_PAGO, true) || ($estado === 'VOIDED' && self::esWompi($i)) ? 0 : 1;
         // Sesión vencida sin ningún intento en el banco: ya no puede pagarse.
         if ($info['sinIntento'] && strtotime((string) $i['created_at']) < time() - self::MINUTOS_COMENZADA * 60) {
             $estado = 'EXPIRED';
@@ -311,10 +436,17 @@ final class PagoLinea
             };
 
             // Un APPROVED del ambiente de pruebas de la pasarela no es plata real.
-            $uno = self::esUnoCeroUno($i);
-            if ($uno ? (UnoCeroUno::esPruebas() && !config('unocerouno.registrar_pruebas', false))
-                     : (AvalPay::esPruebas() && !config('avalpay.registrar_pruebas', false))) {
-                $marca('PRUEBAS', 'Aprobado en el ambiente de pruebas de ' . ($uno ? '1cero1pay' : 'AvalPay') . ': no se registra');
+            $medio = self::medio($i);
+            [$clase, $bloque, $nombre] = self::MEDIOS[$medio];
+            if ($clase::esPruebas() && !config($bloque . '.registrar_pruebas', false)) {
+                $marca('PRUEBAS', 'Aprobado en el ambiente de pruebas de ' . $nombre . ': no se registra');
+                $pdo->commit();
+                return;
+            }
+            // La pasarela aprobó algo que no es lo que se mandó a cobrar (hoy solo
+            // lo dice Wompi: otro valor u otra moneda): se concilia a mano.
+            if (!empty($info['revisar'])) {
+                $marca('REVISAR', 'Aprobado, sin registrar: ' . $info['revisar']);
                 $pdo->commit();
                 return;
             }
@@ -346,7 +478,7 @@ final class PagoLinea
                 return;
             }
 
-            $banco = self::idBancoPse($uno);
+            $banco = self::idBancoPse($medio);
             $ultima = end($filas);
             $columnas = ['fecha_pago', 'numero_recibo', 'id_predio', 'valor_facturado', 'anio_pago', 'fecha_factura',
                          'id_banco_factura', 'id_banco_archivo', 'origen', 'acuerdo', 'created_at', 'updated_at'];
@@ -388,15 +520,16 @@ final class PagoLinea
     }
 
     /** bancos.id del recaudo en línea (asobancaria 999, o el del config de cada pasarela). */
-    private static function idBancoPse(bool $unoCeroUno = false): int
+    private static function idBancoPse(string $medio = 'avalpay'): int
     {
-        $c = (int) config($unoCeroUno ? 'unocerouno.id_banco' : 'avalpay.id_banco', 0);
+        $bloque = self::MEDIOS[$medio][1];
+        $c = (int) config($bloque . '.id_banco', 0);
         if ($c > 0) {
             return $c;
         }
         $id = Db::valor("SELECT TOP 1 id FROM bancos WHERE asobancaria = '999' ORDER BY id");
         if ($id === null) {
-            throw new RuntimeException('No hay banco PSE (asobancaria 999) en la tabla bancos; configure avalpay.id_banco.');
+            throw new RuntimeException('No hay banco PSE (asobancaria 999) en la tabla bancos; configure ' . $bloque . '.id_banco.');
         }
         return (int) $id;
     }
@@ -423,7 +556,8 @@ final class PagoLinea
     /**
      * Enlace de vuelta firmado (sirve aunque la sesión del portal haya vencido).
      * Con AvalPay, la misma firma de siempre (los enlaces ya enviados siguen
-     * valiendo); sin AvalPay, con la clave de 1cero1pay.
+     * valiendo); sin AvalPay, con la clave de 1cero1pay; sin ninguna de las
+     * dos, con la llave de integridad de Wompi.
      */
     public static function urlRetorno(int $id): string
     {
@@ -435,11 +569,12 @@ final class PagoLinea
         if (AvalPay::configurado()) {
             return AvalPay::firmaRetorno($id);
         }
-        return substr(hash_hmac('sha256', 'retorno|' . $id, UnoCeroUno::secreto()), 0, 32);
+        $secreto = UnoCeroUno::configurado() || !Wompi::configurado() ? UnoCeroUno::secreto() : Wompi::secreto();
+        return substr(hash_hmac('sha256', 'retorno|' . $id, $secreto), 0, 32);
     }
 
     public static function firmaValida(int $id, string $firma): bool
     {
-        return $id > 0 && (AvalPay::configurado() || UnoCeroUno::configurado()) && hash_equals(self::firmaRetorno($id), $firma);
+        return $id > 0 && (AvalPay::configurado() || UnoCeroUno::configurado() || Wompi::configurado()) && hash_equals(self::firmaRetorno($id), $firma);
     }
 }

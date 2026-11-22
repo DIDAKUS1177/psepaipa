@@ -66,6 +66,8 @@ $conciliar ??= null;
 // Con un pago aprobado en revisión no se ofrece otro pago en línea.
 $pagoEnLinea = $pagoEnLinea && $conciliar === null;
 $pagoUno = UnoCeroUno::disponiblePara($u) && $conciliar === null;
+// Tercer botón (2026-11-21): Wompi, solo en el municipio que lo tenga configurado.
+$pagoWompi = Wompi::disponiblePara($u) && $conciliar === null;
 
 $pagables = array_values(array_filter($vigencias, fn($v) => $v['pagable']));
 // Con un pago en curso no hay nada que elegir (ni formulario de pago).
@@ -245,6 +247,11 @@ Vista::abrir('Predio ' . $p['codigo_predio'], ['titulo' => 'Impuesto Predial Uni
                             <?php else: ?>
                             <button type="button" role="menuitem" disabled aria-disabled="true">
                                 <?= Vista::icono('pagar') ?><span><strong>PSE · Bancolombia</strong><small>Próximamente.</small></span>
+                            </button>
+                            <?php endif; ?>
+                            <?php if ($pagoWompi): ?>
+                            <button type="submit" role="menuitem" formaction="pagar.php" formtarget="_self" name="pasarela" value="wompi" data-requiere-cotizacion data-pago-linea>
+                                <?= Vista::icono('pagar') ?><span><strong><?= e(Wompi::rotulo()) ?></strong><small>Paga en la página segura de Wompi.</small></span>
                             </button>
                             <?php endif; ?>
                             <button type="submit" role="menuitem" formaction="factura.php" data-requiere-cotizacion>

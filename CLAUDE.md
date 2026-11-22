@@ -302,3 +302,40 @@ nadie copia la llave. La URL NO se toma de ahí: va en `avalpay.url`. `verificar
 (`AvalPay::fuente()`) y le pregunta a AvalPay por una sesión inexistente (`probarCredenciales`: no crea ni cobra nada)
 para saber si acepta las credenciales; en un municipio con el paz y salvo apagado ya no exige la firma.
 Prueba: `pruebas/datos/probar_pse_anterior.php` (8).
+
+### Wompi, tercer botón de pago (2026-11-21, LOCAL, sin commit)
+
+`src/Wompi.php` + `PagoLinea` (medios `'avalpay' | '101' | 'wompi'`, tabla `PagoLinea::MEDIOS`; el campo
+`pasarela` de `pagar.php` lleva ese valor). Sin `'wompi'` ni `'wompi_pse_anterior'` en la configuración no
+existe: ni botón, ni proveedor 7 en las consultas (Paipa queda igual).
+
+- **Cobro**: Web Checkout por redirección a `https://checkout.wompi.co/p/` con `public-key`, `currency=COP`,
+  `amount-in-cents`, `reference`, `redirect-url` (el enlace firmado de `retorno.php`), `expiration-time`
+  (30 min) y `signature:integrity` = sha256(referencia + centavos + COP + vencimiento + llave de integridad).
+  No se crea sesión: el intento se anota con la referencia ANTES de salir.
+- **Referencia** única por intento: `PRED<factura>-<8 hex>`, en `generacion_pagos.IDTransaccion`; el id de la
+  transacción de Wompi queda en `CUS` (`PagoLinea::porWompi` encuentra el intento por cualquiera de los dos).
+- **Confirmación** (igual que en ICA, `class.pagoWompi.php`): SIEMPRE por `GET {api}/transactions?reference=`
+  con la llave privada, que solo trae transacciones de este comercio. El `id` que Wompi agrega al retorno NO
+  se aplica (podría ser de otro comercio con la misma referencia y valor): solo elige cuál mostrar. Un 404,
+  401 o 500 es "no se pudo consultar" (el intento sigue abierto), nunca "no hay pago".
+- **Reglas**: las de siempre (`PagoLinea::registrar`), más una: aprobado por un valor que no es EXACTAMENTE el
+  del intento, o en otra moneda → `REVISAR` sin registrar. De varias transacciones manda la aprobada, luego
+  la pendiente. `DECLINED`/`ERROR`/`VOIDED` cierran el intento; como en la página de Wompi se puede
+  reintentar con la misma referencia, la tarea vuelve a mirar 26 h los cerrados sin pago
+  (`PagoLinea::reintentosWompi`) y si aparece un aprobado lo registra (o queda `DOBLE`).
+- **Ambiente** por el prefijo de las llaves (`pub_test_`/`pub_prod_`...; las tres del mismo, si no, no hay
+  botón). API `sandbox.wompi.co/v1` o `production.wompi.co/v1`; `wompi.api` solo vale con llaves de pruebas
+  (simulador). Con llaves de pruebas el botón lo ven solo los `usuarios_prueba` y un aprobado queda `PRUEBAS`.
+- **Llaves**: `'wompi'` en `config.local.php`; lo que falte, de `'wompi_pse_anterior'` (config.json del
+  portal viejo, plataforma "WOMPI" activa: `publickey`/`Llavepublica`, `Llaveprivada`, `integritykey`).
+  `verificar.php pago` tiene una línea de Wompi (ambiente, fuente, para quién, y si Wompi acepta la llave
+  privada buscando una referencia inexistente); nunca imprime llaves.
+- `web.config`: `form-action` permite `https://checkout.wompi.co` (misma razón que AvalPay).
+- **No hay URL de eventos** de Wompi en este portal: confirman el retorno y la tarea cada 15 minutos.
+- **Prueba**: `pruebas/datos/probar_wompi.php` (128) con `stub_wompi.php`, que la misma prueba arranca en
+  127.0.0.1:9191; agrega `'wompi'` a `config.local.php` mientras corre y lo quita; deja la base igual.
+  `probar_dos_pasarelas.php` (18) repite AvalPay y 1cero1pay con `stub_avalpay.php` dentro del contenedor.
+- **Sin verificar contra el Wompi real** (no hay llaves de pruebas): que la búsqueda por referencia responda
+  así con la llave privada, que Wompi agregue `&id=` a un retorno que ya trae parámetros, y que tras el
+  vencimiento no se pueda pagar. Antes de abrirlo a todos: un pago de punta a punta en el sandbox.

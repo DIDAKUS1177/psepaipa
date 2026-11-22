@@ -1,7 +1,7 @@
 <?php
 /**
- * Tarea programada (cada 15 minutos): consulta en la pasarela (AvalPay o
- * 1cero1pay) los intentos que siguen abiertos y aplica lo que haya pasado. Es el respaldo del aviso
+ * Tarea programada (cada 15 minutos): consulta en la pasarela (AvalPay,
+ * 1cero1pay o Wompi) los intentos que siguen abiertos y aplica lo que haya pasado. Es el respaldo del aviso
  * (avalpay-aviso.php) y del retorno, por si el contribuyente cerró el
  * navegador o el aviso no llegó. Solo por línea de comandos.
  *
@@ -15,7 +15,7 @@ if (PHP_SAPI !== 'cli') {
 }
 require __DIR__ . '/../src/arranque.php';
 
-if (!AvalPay::configurado() && !UnoCeroUno::configurado()) {
+if (!AvalPay::configurado() && !UnoCeroUno::configurado() && !Wompi::configurado()) {
     echo "Ninguna pasarela está configurada: nada que hacer.\n";
     exit(0);
 }
@@ -42,6 +42,12 @@ foreach ($abiertos as $i) {
         $errores++;
         echo $i['IdGeneraPado'] . ': ERROR ' . $t->getMessage() . "\n";
     }
+}
+
+// Wompi: intentos cerrados sin pago que se pagaron después con la misma referencia.
+foreach (PagoLinea::reintentosWompi() as $linea) {
+    $errores += strpos($linea, ': ERROR ') !== false ? 1 : 0;
+    echo $linea . "\n";
 }
 
 // Intentos sin sesión (la pasarela no respondió al crearla): se cierran.

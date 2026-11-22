@@ -5,7 +5,9 @@
  * transacción: referencia, estado, fecha, valor y moneda (certificación).
  *
  * GET i = intento, t = firma del enlace (AvalPay::firmaRetorno). No exige la
- * sesión del portal: pudo vencer mientras pagaba en el banco.
+ * sesión del portal: pudo vencer mientras pagaba en el banco. Wompi agrega
+ * id = su transacción: solo sirve para elegir cuál mostrar (lo que se aplica
+ * sale de la búsqueda por la referencia del intento, PagoLinea::actualizar).
  */
 
 declare(strict_types=1);
@@ -13,6 +15,11 @@ require __DIR__ . '/../src/arranque.php';
 
 $id = (int) ($_GET['i'] ?? 0);
 $firma = (string) ($_GET['t'] ?? '');
+$idRetorno = is_string($_GET['id'] ?? null) ? $_GET['id'] : '';
+// Por si la pasarela pega su "?id=" al final de un enlace que ya traía parámetros.
+if (preg_match('/^([0-9a-f]{32})\?id=(.*)$/', $firma, $m)) {
+    [$firma, $idRetorno] = [$m[1], $m[2]];
+}
 $intento = null;
 if (PagoLinea::firmaValida($id, $firma)) {
     try {
@@ -26,7 +33,7 @@ $info = null;
 $fallaConsulta = false;
 if ($intento !== null) {
     try {
-        $r = PagoLinea::actualizar($intento);
+        $r = PagoLinea::actualizar($intento, $idRetorno);
         $intento = $r['intento'] ?? $intento;
         $info = $r['info'];
     } catch (Throwable $t) {
@@ -88,7 +95,7 @@ switch (true) {
 }
 
 $nombresEstado = ['APPROVED' => 'Aprobado', 'PENDING' => 'Pendiente', 'COMENZADA' => 'Iniciado', 'REJECTED' => 'Rechazado',
-                  'EXPIRED' => 'Vencido', 'FAILED' => 'Fallido', 'DOBLE' => 'Pago repetido', 'REVISAR' => 'En revisión', 'PRUEBAS' => 'Prueba'];
+                  'EXPIRED' => 'Vencido', 'FAILED' => 'Fallido', 'DECLINED' => 'Rechazado', 'VOIDED' => 'Anulado', 'ERROR' => 'Con error', 'DOBLE' => 'Pago repetido', 'REVISAR' => 'En revisión', 'PRUEBAS' => 'Prueba'];
 $chip = ['ok' => 'chip-ok', 'pendiente' => 'chip-info', 'alerta' => 'chip-pendiente', 'error' => 'chip-pendiente'][$clase];
 $icono = ['ok' => 'chequeo', 'pendiente' => 'reloj', 'alerta' => 'alerta', 'error' => 'alerta'][$clase];
 $fecha = $intento !== null ? date('d/m/Y h:i a', strtotime((string) ($info['fecha'] ?? $intento['created_at']))) : '';

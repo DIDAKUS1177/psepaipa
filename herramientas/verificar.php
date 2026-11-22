@@ -54,6 +54,22 @@ if (($argv[1] ?? '') === 'pago') {
     $r101 = UnoCeroUno::resumen();
     paso('1cero1pay (Bancolombia)', true, (UnoCeroUno::configurado() ? 'listo' : 'incompleto') . (config('unocerouno.activo', false) ? ', activo' : ', APAGADO') . ' — '
         . implode(', ', array_map(fn($k, $v) => "$k: $v", array_keys($r101), $r101)));
+    // Wompi: una línea, sin valores de llaves. Sin configurar no es una falla.
+    if (!Wompi::previsto()) {
+        paso('Wompi', true, 'sin configurar en este municipio');
+    } else {
+        $faltaWompi = Wompi::problema();
+        $pruebaWompi = (array) config('wompi.usuarios_prueba', []);
+        $ajenosWompi = (int) Db::valor('SELECT COUNT(*) FROM generacion_pagos WHERE proveedor = ? AND (Impuesto IS NULL OR Impuesto NOT LIKE ?)', [Wompi::proveedor(), 'Predial %']);
+        // Con las llaves completas, busca una referencia inexistente: no crea ni cobra nada.
+        $rechazoWompi = $faltaWompi === null ? Wompi::probarLlaves() : null;
+        paso('Wompi', $faltaWompi === null && $rechazoWompi === null && $ajenosWompi === 0,
+            ($faltaWompi === null ? 'configurado, ' . Wompi::ambiente() : 'INCOMPLETO: ' . $faltaWompi) . ' — llaves: ' . Wompi::fuente()
+            . ' — ' . (!config('wompi.activo', false) ? 'APAGADO' : ($pruebaWompi ? 'solo ' . count($pruebaWompi) . ' usuario(s) de prueba'
+                : (Wompi::esPruebas() ? 'nadie (llaves de pruebas sin usuarios de prueba)' : 'activo para todos')))
+            . ($rechazoWompi !== null ? ' — la consulta a Wompi falló: ' . $rechazoWompi : '')
+            . ($ajenosWompi > 0 ? ' — el proveedor ' . Wompi::proveedor() . ' de generacion_pagos ya tiene ' . $ajenosWompi . ' filas de otro sistema: cambie wompi.proveedor' : ''));
+    }
     // Correo para "¿Olvidaste tu contraseña?" (sin mostrar claves).
     paso('Correo para recuperar la contraseña', Correo::disponible(), Correo::resumen());
     // Abre la conexión y se autentica SIN mandar nada: detecta un certificado que PHP no reconoce o una clave rechazada.
