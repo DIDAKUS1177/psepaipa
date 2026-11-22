@@ -35,12 +35,21 @@ try {
 // "verificar.php pago": solo el pago en línea, en pocas líneas (Plesk corta la
 // salida larga y el ambiente de AvalPay quedaba fuera de lo visible).
 if (($argv[1] ?? '') === 'pago') {
-    paso('AvalPay configurado', AvalPay::configurado(), AvalPay::ambiente() . (config('avalpay_ica') ? ' — cuenta de ICA' : ''));
+    paso('AvalPay configurado', AvalPay::configurado(), AvalPay::ambiente() . ' — credenciales: ' . AvalPay::fuente());
+    if (AvalPay::configurado()) {
+        // Pregunta a AvalPay por una sesión inexistente: no crea ni cobra nada.
+        $falloAval = AvalPay::probarCredenciales();
+        paso('AvalPay acepta el login y la llave', $falloAval === null, $falloAval ?? 'sí');
+    }
     $prueba = (array) config('avalpay.usuarios_prueba', []);
     paso('Pago en línea', true, !config('avalpay.activo', false) ? 'APAGADO' : ($prueba ? 'solo ' . count($prueba) . ' usuario(s) de prueba' : 'activo para todos'));
     $firma = (string) config('paz_salvo.firma', '');
     $tipo = is_file($firma) ? (getimagesize($firma)['mime'] ?? '') : '';
-    paso('Firma del paz y salvo (JPEG)', $tipo === 'image/jpeg', $firma === '' ? 'sin configurar' : (is_file($firma) ? $tipo : 'no existe el archivo'));
+    if (PazYSalvo::activo()) {
+        paso('Firma del paz y salvo (JPEG)', $tipo === 'image/jpeg', $firma === '' ? 'sin configurar' : (is_file($firma) ? $tipo : 'no existe el archivo'));
+    } else {
+        paso('Paz y salvo', true, 'apagado en este municipio');
+    }
     // 1cero1pay: lo que encontró (config o base del sistema viejo), sin usuario ni clave.
     $r101 = UnoCeroUno::resumen();
     paso('1cero1pay (Bancolombia)', true, (UnoCeroUno::configurado() ? 'listo' : 'incompleto') . (config('unocerouno.activo', false) ? ', activo' : ', APAGADO') . ' — '

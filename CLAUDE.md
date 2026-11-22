@@ -292,3 +292,13 @@ uno está en su perfil.
 - **Falta**: datos de cada Alcaldía (contacto, cuentas, fundamento legal, foto), probar contra las bases de los otros
   tres en el servidor (`verificar.php`), revisión completa, commit y despliegue por municipio (carpeta nueva +
   `config.local.php` + tarea `verificar-pagos.php` cada 15 min + raíz del documento; volver = raíz anterior).
+
+### Convenio de AvalPay leído del portal anterior (2026-11-21)
+
+`'avalpay_pse_anterior'` = ruta del `assets/config.json` del portal viejo (Angular) del municipio. Si en `'avalpay'`
+faltan login o llave, `AvalPay::dePseAnterior` los toma de `configuraciones[0].Plataformas[Nombre ~ Placetopay]
+.configuracion.login/secretKey` (solo si esa plataforma estaba activa), igual que la conexión sale del appsettings:
+nadie copia la llave. La URL NO se toma de ahí: va en `avalpay.url`. `verificar.php pago` dice la fuente
+(`AvalPay::fuente()`) y le pregunta a AvalPay por una sesión inexistente (`probarCredenciales`: no crea ni cobra nada)
+para saber si acepta las credenciales; en un municipio con el paz y salvo apagado ya no exige la firma.
+Prueba: `pruebas/datos/probar_pse_anterior.php` (8).

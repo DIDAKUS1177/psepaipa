@@ -51,7 +51,54 @@ final class AvalPay
                 error_log('[psepaipa] no se pudo leer el convenio AvalPay de ICA: ' . $t->getMessage());
             }
         }
+        // Convenio del PSE ANTERIOR del municipio (2026-11-21): login y llave se leen del
+        // config.json del portal viejo en el servidor, igual que la conexión sale de su
+        // appsettings: nadie copia la llave. Lo escrito en 'avalpay' sigue mandando.
+        $viejo = (string) config('avalpay_pse_anterior', '');
+        if (($c['login'] === '' || $c['secret'] === '') && $viejo !== '') {
+            try {
+                $v = self::dePseAnterior($viejo);
+                foreach (['login', 'secret'] as $k) {
+                    if ($c[$k] === '') {
+                        $c[$k] = $v[$k];
+                    }
+                }
+            } catch (Throwable $t) {
+                error_log('[psepaipa] no se pudo leer el convenio AvalPay del PSE anterior: ' . $t->getMessage());
+            }
+        }
         return self::$cred = $c;
+    }
+
+    /**
+     * Login y llave de AvalPay del portal anterior (Angular): su assets/config.json trae
+     * configuraciones[0].Plataformas[], y la de AvalPay es la que se llama "Placetopay"
+     * (configuracion.login / configuracion.secretKey). Solo si esa plataforma está activa.
+     */
+    public static function dePseAnterior(string $ruta): array
+    {
+        if (!is_file($ruta) || !is_readable($ruta)) {
+            throw new RuntimeException('no existe o no se puede leer el config.json del portal anterior');
+        }
+        $texto = (string) file_get_contents($ruta);
+        $j = json_decode(preg_replace('/^\xEF\xBB\xBF/', '', $texto) ?? '', true);
+        if (!is_array($j)) {
+            throw new RuntimeException('el config.json del portal anterior no es JSON válido');
+        }
+        foreach ((array) ($j['configuraciones'][0]['Plataformas'] ?? []) as $p) {
+            if (is_array($p) && stripos((string) ($p['Nombre'] ?? ''), 'placetopay') !== false) {
+                if (empty($p['Activo'])) {
+                    throw new RuntimeException('en el portal anterior Placetopay (AvalPay) no estaba activo');
+                }
+                $login  = trim((string) ($p['configuracion']['login'] ?? ''));
+                $secret = trim((string) ($p['configuracion']['secretKey'] ?? ''));
+                if ($login === '' || $secret === '') {
+                    throw new RuntimeException('el portal anterior no trae login o llave de Placetopay');
+                }
+                return ['login' => $login, 'secret' => $secret];
+            }
+        }
+        throw new RuntimeException('el portal anterior no tiene la plataforma Placetopay (AvalPay)');
     }
 
     /** Constantes define('X', '...') de un archivo PHP, leídas SIN ejecutarlo. */
@@ -225,6 +272,38 @@ RE;
             throw new RuntimeException('AvalPay rechazó la sesión: ' . ($d['status']['message'] ?? 'sin detalle'));
         }
         return [(string) $d['requestId'], (string) $d['processUrl']];
+    }
+
+    /** De dónde salieron login y llave (para la verificación; nunca los valores). */
+    public static function fuente(): string
+    {
+        if ((string) config('avalpay.login', '') !== '' && (string) config('avalpay.secret', '') !== '') {
+            return 'escritas en config.local.php';
+        }
+        if ((string) config('avalpay_ica', '') !== '') {
+            return 'convenio de ICA';
+        }
+        return (string) config('avalpay_pse_anterior', '') !== '' ? 'convenio del PSE anterior (su config.json)' : 'sin fuente';
+    }
+
+    /**
+     * ¿AvalPay acepta el login y la llave? Consulta una sesión que no existe: con las
+     * credenciales bien, AvalPay contesta que no la encuentra; mal, que la autenticación
+     * falló (reason 401). No crea nada ni cobra nada. null = las acepta; si no, el motivo.
+     */
+    public static function probarCredenciales(): ?string
+    {
+        try {
+            $d = self::post('/session/1', ['auth' => self::auth()]);
+        } catch (Throwable $t) {
+            return $t->getMessage();
+        }
+        $motivo = (string) ($d['status']['reason'] ?? '');
+        $texto  = (string) ($d['status']['message'] ?? '');
+        if ($motivo === '401' || stripos($texto, 'autentic') !== false || stripos($texto, 'authentic') !== false) {
+            return 'AvalPay rechazó las credenciales: ' . ($texto !== '' ? $texto : 'sin detalle');
+        }
+        return null;
     }
 
     /** Estado real de una sesión. Lanza si la respuesta no trae ESA sesión. */
